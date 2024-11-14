@@ -2,10 +2,10 @@ from fastapi import FastAPI
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import time
-from app.config import settings
+from app.database.config import settings
 # from app.routers import products, users, auth
 from fastapi.middleware.cors import CORSMiddleware
-from app.config import settings
+from app.database.config import settings
 
 app = FastAPI()
 origins = ["http://www.google.com"]

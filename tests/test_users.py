@@ -5,7 +5,7 @@ from fastapi.security.oauth2 import OAuth2PasswordRequestForm
 from app.main import app
 import app.models as models
 import app.utils as utils
-    
+
 class TestUsers:
     
     @pytest.fixture
@@ -21,6 +21,7 @@ class TestUsers:
             username="psanchez"
         )
 
+        # Simulate returning a user when queried
         mock_session.query().filter().first.return_value = mock_user
         
         return mock_session
@@ -35,6 +36,8 @@ class TestUsers:
             "name": "Pedro",
             "lastname": "Sanchez"
         }
+        
+        # Ensure the function returns the correct user data
         response = get_users(username, mock_db_session)
         response_json = {
             "username": response.username,
@@ -45,17 +48,18 @@ class TestUsers:
         
         assert response_json == expected_json
     
-    def test_get_users_exception(self, mocker):
-        """Test that the user is retrieved successfully."""
+    def test_get_users_exception(self, mock_db_session):
+        """Test that an HTTPException is raised when the user is not found."""
         
-        mock_db_session = mocker.Mock()
-
+        # Mock no user found
         mock_db_session.query().filter().first.return_value = None
         username = "piglesias"
         expected = f"User {username} not found"
         
-        try:
+        # Use pytest.raises to expect the exception
+        with pytest.raises(HTTPException) as exc:
             get_users(username, mock_db_session)
-        except HTTPException as exc:
-            assert exc.status_code == 404
-            assert exc.detail == expected
+        
+        # Check the exception details
+        assert exc.value.status_code == 404
+        assert exc.value.detail == expected

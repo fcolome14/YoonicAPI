@@ -50,4 +50,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Ensure GitHub Actions uses the token
         run: |
-          ghp-import -n -p -f docs/_build/html
+          ghp-import -n -p -f docs/build/html

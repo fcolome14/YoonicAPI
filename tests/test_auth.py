@@ -1,8 +1,6 @@
 import pytest
 from fastapi import HTTPException
 from app.routers.auth import login
-from app.schemas.token import Token
-from unittest.mock import MagicMock
 from fastapi.security.oauth2 import OAuth2PasswordRequestForm
 import app.models as models
 import app.utils as utils

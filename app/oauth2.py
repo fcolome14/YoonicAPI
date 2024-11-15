@@ -1,6 +1,6 @@
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
-import app.schemas.user as user
+import app.schemas.bases as bases
 from app.database.config import settings
 from fastapi import Depends, status, HTTPException
 from fastapi.security import OAuth2PasswordBearer
@@ -51,7 +51,7 @@ def decode_access_token(token: str, credentials_exception):
         
         if id is None:
             raise credentials_exception
-        token_data = user.TokenData(id=str(id)) #Sets the recovered id to the TokenData schema
+        token_data = bases.TokenData(id=str(id)) #Sets the recovered id to the TokenData schema
     
     except JWTError:
         raise credentials_exception

@@ -5,7 +5,8 @@ import time
 from app.database.config import settings
 # from app.routers import products, users, auth
 from fastapi.middleware.cors import CORSMiddleware
-from app.database.config import settings
+from app.routers import users
+from app.routers import auth
 
 app = FastAPI()
 origins = ["http://www.google.com"]
@@ -36,4 +37,5 @@ while True:
 #Include here all the router scripts
 # app.include_router(products.router)
 # app.include_router(users.router)
-# app.include_router(auth.router)
+app.include_router(auth.router)
+app.include_router(users.router)

@@ -3,7 +3,6 @@ from pathlib import Path
 import os
     
 class Settings(BaseSettings):
-    
     """ Database setting parameters structure """
     
     database_hostname: str
@@ -18,7 +17,6 @@ class Settings(BaseSettings):
     #NOTE: Names must match the ones in .env file
 
     class Config:
-        
         """ Configuration class to resolve env. variables """
         
         try:

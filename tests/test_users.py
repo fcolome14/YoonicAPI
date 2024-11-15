@@ -1,15 +1,13 @@
 import pytest
+from pytest_mock import MockerFixture
 from fastapi import HTTPException
-from app.routers.users import get_users, create_users
-from fastapi.security.oauth2 import OAuth2PasswordRequestForm
-from app.main import app
+from app.routers.users import get_users
 import app.models as models
-import app.utils as utils
 
 class TestUsers:
     
     @pytest.fixture
-    def mock_db_session(self, mocker):
+    def mock_db_session(self, mocker: MockerFixture):
         mock_session = mocker.Mock()
         
         mock_user = models.Users(
@@ -21,7 +19,6 @@ class TestUsers:
             username="psanchez"
         )
 
-        # Simulate returning a user when queried
         mock_session.query().filter().first.return_value = mock_user
         
         return mock_session
@@ -36,8 +33,7 @@ class TestUsers:
             "name": "Pedro",
             "lastname": "Sanchez"
         }
-        
-        # Ensure the function returns the correct user data
+
         response = get_users(username, mock_db_session)
         response_json = {
             "username": response.username,

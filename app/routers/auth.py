@@ -25,7 +25,7 @@ def login(user_credentials: OAuth2PasswordRequestForm = Depends(), db: Session =
         _type_: Session JWT
     """
     
-    user = db.query(models.Users).filter(models.Users.email == user_credentials.username).first()
+    user = db.query(models.Users).filter(models.Users.username == user_credentials.username).first()
     
     if not user:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid Credentials")

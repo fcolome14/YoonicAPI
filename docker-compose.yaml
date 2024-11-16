@@ -19,7 +19,6 @@ services:
 
   yoonic_api:
     build: .
-    command: gunicorn -w 4 -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:8000
     container_name: yoonic_api-container
     ports:
       - 8000:8000  # Exposes API on port 8000

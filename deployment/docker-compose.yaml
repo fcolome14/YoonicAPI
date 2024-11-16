@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+
+# PostgreSQL database container
+  postgres:
+    image: postgres:14
+    container_name: postgres-container
+    ports:
+      - 5432:5432
+    environment:
+      - POSTGRES_USER=${DATABASE_USERNAME}
+      - POSTGRES_PASSWORD=${DATABASE_PASSWORD}
+      - POSTGRES_DB=${DATABASE_NAME}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+
+  yoonic_api:
+    build: .
+    container_name: yoonic_api-container
+    ports:
+      - 8000:8000
+    environment:
+      - DATABASE_HOSTNAME=postgres
+      - DATABASE_PORT=${DATABASE_PORT}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+      - DATABASE_NAME=${DATABASE_NAME}
+      - DATABASE_USERNAME=${DATABASE_USERNAME}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALGORITHM=${ALGORITHM}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
+      - DATABASE_URL=postgresql://postgres:${DATABASE_PASSWORD}@postgres:${DATABASE_PORT}/${DATABASE_NAME}
+    networks:
+      - app-network
+    depends_on:
+      - postgres  # Ensures that the PostgreSQL container starts first
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  postgres_data:

@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+
+# PostgreSQL database container
+  postgres:
+    image: postgres:14
+    container_name: postgres-container
+    ports:
+      - 5432:5432
+    environment:
+      - POSTGRES_USER=${DATABASE_USERNAME}
+      - POSTGRES_PASSWORD=${DATABASE_PASSWORD}
+      - POSTGRES_DB=${DATABASE_NAME}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data  # Persistent storage for PostgreSQL
+    networks:
+      - app-network
+
+  yoonic_api:
+    build: .
+    container_name: yoonic_api-container
+    ports:
+      - 8000:8000  # Exposes API on port 8000
+    environment:
+      - DATABASE_HOSTNAME=${DATABASE_HOSTNAME}  # Points to the postgres service
+      - DATABASE_PORT=${DATABASE_PORT}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+      - DATABASE_NAME=${DATABASE_NAME}
+      - DATABASE_USERNAME=${DATABASE_USERNAME}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALGORITHM=${ALGORITHM}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
+      - DATABASE_URL=postgresql://postgres:${DATABASE_PASSWORD}@${DATABASE_HOSTNAME}:${DATABASE_PORT}/${DATABASE_NAME}
+    networks:
+      - app-network
+    depends_on:
+      - postgres  # Ensures that the PostgreSQL container starts first
+  
+  nginx:
+    image: nginx:latest
+    container_name: nginx_server
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    networks:
+      - app-network
+    depends_on:
+      - yoonic_api
+
+networks:
+  app-network:
+    driver: bridge
+
+# Persistent volume to store PostgreSQL data
+volumes:
+  postgres_data:

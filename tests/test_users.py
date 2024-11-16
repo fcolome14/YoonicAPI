@@ -1,7 +1,8 @@
 import pytest
 from pytest_mock import MockerFixture
 from fastapi import HTTPException
-from app.routers.users import get_users
+from app.routers.users import get_users, create_users
+from app.schemas import CreateUsers
 import app.models as models
 
 class TestUsers:
@@ -24,7 +25,7 @@ class TestUsers:
         return mock_session
     
     def test_get_users_succeed(self, mock_db_session):
-        """Test that the user is retrieved successfully."""
+        """ Test that the user is retrieved successfully."""
         
         username = "psanchez"
         expected_json = {
@@ -45,17 +46,46 @@ class TestUsers:
         assert response_json == expected_json
     
     def test_get_users_exception(self, mock_db_session):
-        """Test that an HTTPException is raised when the user is not found."""
+        """ Test that an HTTPException is raised when the user is not found."""
         
-        # Mock no user found
         mock_db_session.query().filter().first.return_value = None
         username = "piglesias"
         expected = f"User {username} not found"
         
-        # Use pytest.raises to expect the exception
         with pytest.raises(HTTPException) as exc:
             get_users(username, mock_db_session)
         
-        # Check the exception details
         assert exc.value.status_code == 404
         assert exc.value.detail == expected
+        
+    
+    @pytest.mark.parametrize("fetched_data, expected_result", [
+    (
+        {
+            "username": "string",
+            "email": "user@example.com",
+            "name": "string",
+            "lastname": "string",
+            "password": "string"
+        },
+        {
+            "username": "string",
+            "email": "user@example.com",
+            "name": "string",
+            "lastname": "string"
+        }
+    ),
+    ])
+    
+    def test_post_create_users_succeed(self, mock_db_session, fetched_data, expected_result):
+        """ Test creating a new user """
+        
+        users_model = CreateUsers(**fetched_data)
+        response = create_users(users_model, mock_db_session)
+        response_json = {
+            "username": response.username,
+            "email": response.email,
+            "name": response.name,
+            "lastname": response.lastname
+        }
+        assert response_json == expected_result

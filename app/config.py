@@ -13,6 +13,12 @@ class Settings(BaseSettings):
     secret_key: str
     algorithm: str
     access_token_expire_minutes: int 
+    email: str
+    email_password: str
+    smtp_server: str
+    smtp_port: int
+    domain: str
+    email_code_expire_minutes: int 
     
     #NOTE: Names must match the ones in .env file
 

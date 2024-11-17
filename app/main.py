@@ -2,7 +2,7 @@ from fastapi import FastAPI
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import time
-from app.database.config import settings
+from app.config import settings
 # from app.routers import products, users, auth
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import users

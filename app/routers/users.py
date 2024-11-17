@@ -2,8 +2,9 @@ from fastapi import Depends, APIRouter, status, HTTPException
 from sqlalchemy.orm import Session
 from app.database.connection import get_db
 import app.models as models
+from sqlalchemy import or_, and_
 import app.schemas as schemas
-import app.utils as utils
+from app.utils import email_utils, utils
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -50,3 +51,55 @@ def get_users(username: str, db: Session=Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"User {username} not found")
     
     return users
+
+@router.post("/password_change", status_code=status.HTTP_201_CREATED, response_model=schemas.GetUsers)
+def password_change(users_credentials: schemas.PasswordChange, db: Session=Depends(get_db)):
+    
+    user = db.query(models.Users).filter(and_(models.Users.email == users_credentials.email,  
+                                               models.Users.is_validated == True)).first() # noqa: E712
+    
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Active user not found") 
+    
+    if not utils.is_password_valid(users_credentials.password, user.password):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid Credentials") 
+    
+    password_test = utils.is_password_strength(users_credentials.new_password)
+    if password_test:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, 
+                             detail=schemas.DetailError(type="WeakPassword",
+                                                        message=f"Weak password: {password_test}").model_dump())
+        
+    if utils.is_user_valid(db, users_credentials.email, users_credentials.password):
+        user.password = utils.hash_password(users_credentials.new_password)
+        db.commit()
+        db.refresh(user)
+        return user
+    
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+
+@router.post("/password_recovery", status_code=status.HTTP_201_CREATED, response_model=schemas.GetUsers)
+def password_recovery(users_credentials: schemas.PasswordRecovery, db: Session=Depends(get_db)):
+    
+    user = db.query(models.Users).filter(and_(models.Users.email == users_credentials.email,  
+                                               models.Users.is_validated == True)).first() # noqa: E712
+    
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Active user not found") 
+    
+    if not utils.is_password_valid(users_credentials.password, user.password):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid Credentials") 
+    
+    password_test = utils.is_password_strength(users_credentials.new_password)
+    if password_test:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, 
+                             detail=schemas.DetailError(type="WeakPassword",
+                                                        message=f"Weak password: {password_test}").model_dump())
+        
+    if utils.is_user_valid(db, users_credentials.email, users_credentials.password):
+        user.password = utils.hash_password(users_credentials.new_password)
+        db.commit()
+        db.refresh(user)
+        return user
+    
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")

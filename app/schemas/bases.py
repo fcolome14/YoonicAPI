@@ -13,5 +13,9 @@ class UsersBase(BaseModel):
     
     username: str
     email: EmailStr
-    name: str
-    lastname: str
+    full_name: str
+    
+class DetailError(BaseModel):
+    
+    code: str
+    message: str

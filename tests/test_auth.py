@@ -1,6 +1,7 @@
 import pytest
 from fastapi import HTTPException
-from app.routers.auth import login
+from app.routers.auth import login, register
+from pytest_mock import MockerFixture
 from fastapi.security.oauth2 import OAuth2PasswordRequestForm
 import app.models as models
 import app.utils as utils
@@ -14,7 +15,7 @@ class TestAuth:
     """Authorization tests"""
 
     @pytest.fixture
-    def mock_db_session(self, mocker):
+    def mock_db_session(self, mocker: MockerFixture):
         mock_session = mocker.Mock()
 
         mock_user = models.Users(id=1, email="test@example.com", password="hashed_password")
@@ -55,3 +56,17 @@ class TestAuth:
 
         assert exc_info.value.status_code == 403
         assert exc_info.value.detail == "Invalid Credentials"
+    
+    def test_register_succeed(self, mocker: MockerFixture):
+        mock_session = mocker.Mock()
+        user_data = {
+            "username": "testuser",
+            "full_name": "Test User",
+            "email": "testuser@example.com",
+            "password": "testpassword"
+        }
+        
+        mock_session.query().filter().first.return_value = None
+        
+        response = register(user_data, mock_session)
+        assert response == None

@@ -2,7 +2,6 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 import app.models as models
-from password_strength import PasswordPolicy
 import pytz
 from datetime import datetime
 import random
@@ -11,8 +10,6 @@ import string
 utc = pytz.UTC
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-pwd_policy = PasswordPolicy.from_names(length=8, uppercase=1, numbers=1, special=1)
 
 def hash_password(pwd: str):
     return pwd_context.hash(pwd)
@@ -28,8 +25,14 @@ def is_user_valid(db: Session, email: str, password: str) -> models.Users | None
     
     return False
 
-def is_password_strength(plain_password: str) -> list:
-    return pwd_policy.test(plain_password)
+def is_password_strong(plain_password: str) -> bool:
+    if len(plain_password) < 8:
+        return False
+    if not any(char.isdigit() for char in plain_password):
+        return False
+    if not any(char.isalpha() for char in plain_password):
+        return False 
+    return True 
 
 def is_username_taken(db: Session, username: str):
     return db.query(models.Users).filter(and_(models.Users.username == username, models.Users.is_validated == True)).first()  # noqa: E712

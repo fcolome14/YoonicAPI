@@ -83,7 +83,7 @@ class TestAuth:
         mocker.patch("app.routers.auth.email_utils.is_email_valid", return_value=fetched_data.email)
         mocker.patch("app.routers.auth.email_utils.is_email_taken", return_value=None)
         mocker.patch("app.routers.auth.utils.is_username_taken", return_value=None)
-        mocker.patch("app.routers.auth.utils.is_password_strength", return_value=[])
+        mocker.patch("app.routers.auth.utils.is_password_strong", return_value=True)
         
         mock_hashed_password = "hashed_testpassword"
         mocker.patch("app.routers.auth.utils.hash_password", return_value=mock_hashed_password)
@@ -112,28 +112,13 @@ class TestAuth:
              ),
             
             (schemas.RegisterUser(username="testuser",full_name="Test User",email="testuser@example.com",password=""),
-             "utils.is_password_strength", ["Length(8)", "Uppercase(1)", "Numbers(1)", "Special(2)"], HTTPException, 409, 
-             "WeakPassword", "Weak password: ['Length(8)', 'Uppercase(1)', 'Numbers(1)', 'Special(2)']"
+             "utils.is_password_strong", False, HTTPException, 409, 
+             "WeakPassword", "Weak password"
              ),
             
             (schemas.RegisterUser(username="testuser",full_name="Test User",email="testuser@example.com",password="123"),
-             "utils.is_password_strength", ["Length(8)", "Uppercase(1)", "Special(2)"], HTTPException, 409, 
-             "WeakPassword", "Weak password: ['Length(8)', 'Uppercase(1)', 'Special(2)']"
-             ),
-            
-            (schemas.RegisterUser(username="testuser",full_name="Test User",email="testuser@example.com",password="123asdfr"),
-             "utils.is_password_strength", ["Uppercase(1)", "Special(2)"], HTTPException, 409, 
-             "WeakPassword", "Weak password: ['Uppercase(1)', 'Special(2)']"
-             ),
-            
-            (schemas.RegisterUser(username="testuser",full_name="Test User",email="testuser@example.com",password="A123reds"),
-             "utils.is_password_strength", ["Special(2)"], HTTPException, 409, 
-             "WeakPassword", "Weak password: ['Special(2)']"
-             ),
-            
-            (schemas.RegisterUser(username="testuser",full_name="Test User",email="testuser@example.com",password="12-3reds"),
-             "utils.is_password_strength", ["Uppercase(1)"], HTTPException, 409, 
-             "WeakPassword", "Weak password: ['Uppercase(1)']"
+              "utils.is_password_strong", False, HTTPException, 409, 
+             "WeakPassword", "Weak password"
              ),
             
             (schemas.RegisterUser(username="testuser",full_name="Test User",email="testuser@example.com",password="Password6454g_"),

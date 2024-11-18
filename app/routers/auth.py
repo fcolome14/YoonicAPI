@@ -65,11 +65,11 @@ def register_user(user_credentials: schemas.RegisterUser = Depends(), db: Sessio
                              detail=schemas.DetailError(type="UserExists",
                                                         message=f"{user_credentials.username} already registered").model_dump())
     
-    password_test = utils.is_password_strength(user_credentials.password)
-    if password_test:
+    password_test = utils.is_password_strong(user_credentials.password)
+    if not password_test:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, 
                              detail=schemas.DetailError(type="WeakPassword",
-                                                        message=f"Weak password: {password_test}").model_dump())
+                                                        message="Weak password").model_dump())
     
     hashed_password = utils.hash_password(user_credentials.password)
     user_credentials.password = hashed_password

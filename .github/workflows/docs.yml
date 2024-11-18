@@ -4,13 +4,13 @@ name: Build and deploy project documentation
 on:
   # Trigger the workflow on push to the master branch, or changes to docs/
   push:
-    branches: [master]
+    branches: [main]
     paths:
       - 'docs/**'  # Trigger on any change inside the docs folder
       - '**/*.py'  # Also trigger when Python code changes (if documentation is related to code)
 
   pull_request:
-    branches: [master]
+    branches: [main]
     paths:
       - 'docs/**'
       - '**/*.py'

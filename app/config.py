@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings
 from pathlib import Path
 import os
-    
+
 class Settings(BaseSettings):
     """ Database setting parameters structure """
     
@@ -22,13 +22,9 @@ class Settings(BaseSettings):
     
     #NOTE: Names must match the ones in .env file
 
-    class Config:
-        """ Configuration class to resolve env. variables """
-        
-        try:
-            env_file = os.path.join(Path(__file__).resolve().parent.parent, ".env")
-        
-        except Exception as error:
-            print(f"Error {error}")
-        
+    model_config = {
+        "env_file": os.path.join(Path(__file__).resolve().parent.parent, ".env"),
+        "env_file_encoding": "utf-8",  # Optional: specify the encoding
+    }
+
 settings = Settings()

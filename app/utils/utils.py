@@ -37,9 +37,9 @@ def is_username_taken(db: Session, username: str):
 def is_account_unverified(db: Session, email: str, username: str):
     return db.query(models.Users).filter(and_(models.Users.email == email, models.Users.is_validated == False, models.Users.username == username)).first()  # noqa: E712
 
-def is_code_valid(db: Session, code: int, is_password_recovery: bool = False) -> bool:
+def is_code_valid(db: Session, code: int) -> bool:
     
-    fetched_record = db.query(models.Users).filter(and_(models.Users.code == code, models.Users.is_validated == is_password_recovery)).first()  # noqa: E712
+    fetched_record = db.query(models.Users).filter(models.Users.code == code).first()  # noqa: E712
     
     if not fetched_record or not fetched_record.code_expiration:
         return False

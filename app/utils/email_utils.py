@@ -13,6 +13,8 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from urllib.parse import quote_plus
 
+VERIFY_CODE_ROUTE = "/auth/verify-code"
+
 def is_email_taken(db: Session, email: str) -> models.Users | None:
     """Check if an email is already taken
 
@@ -47,7 +49,7 @@ def send_validation_email(db: Session, recipient_email: str) -> Union[dict, int]
         dict | int: Error details as a dictionary or the validation code on success.
     """
     validation_code = generate_code(db)
-    email_template_path = os.path.join(os.getcwd(), 'app', 'templates', 'email_template.html')
+    email_template_path = os.path.join(os.getcwd(), 'app', 'templates', 'email_verification_code.html')
 
     try:
         with open(email_template_path, 'r') as f:
@@ -55,7 +57,7 @@ def send_validation_email(db: Session, recipient_email: str) -> Union[dict, int]
     except FileNotFoundError:
         return {"status": 404, "message": "Email verification code template not found"}
 
-    verification_url = f"{settings.domain}/auth/verify/{quote_plus(validation_code)}"
+    verification_url = f"{settings.domain}{VERIFY_CODE_ROUTE}/{quote_plus(validation_code)}?is_recovery=false"
     template = Template(template_content)
     html_content = template.substitute(verification_code=validation_code, verification_url=verification_url)
 
@@ -100,7 +102,7 @@ def send_recovery_email(db: Session, recipient_email: str) -> Union[dict, int]:
     except FileNotFoundError:
         return {"status": 404, "message": "Email recovery template not found"}
 
-    verification_url = f"{settings.domain}/auth/password_recovery/{quote_plus(validation_code)}"
+    verification_url = f"{settings.domain}{VERIFY_CODE_ROUTE}/{quote_plus(validation_code)}?is_recovery=true"
     template = Template(template_content)
     html_content = template.substitute(verification_code=validation_code, verification_url=verification_url)
 

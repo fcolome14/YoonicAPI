@@ -15,7 +15,7 @@ router = APIRouter(prefix="/auth", tags=['Authentication'])
 utc = pytz.UTC
 
 @router.post('/login', response_model=schemas.Token)
-async def login(user_credentials: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login(user_credentials: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     """User login authentication
 
     Args:
@@ -43,7 +43,7 @@ async def login(user_credentials: OAuth2PasswordRequestForm = Depends(), db: Ses
     return {'access_token' : access_token, "token_type": "bearer"}
 
 @router.post('/register', response_model=schemas.GetUsers, status_code=status.HTTP_200_OK)
-async def register_user(user_credentials: schemas.RegisterUser = Depends(), db: Session = Depends(get_db)):
+def register_user(user_credentials: schemas.RegisterUser = Depends(), db: Session = Depends(get_db)):
     
     if utils.is_account_unverified(db, user_credentials.email, user_credentials.username):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, 
@@ -94,29 +94,32 @@ async def register_user(user_credentials: schemas.RegisterUser = Depends(), db: 
     db.refresh(new_user)
     
     return new_user
-
  
-@router.post('/verify', status_code=status.HTTP_200_OK)
-async def verify_user(email_validation: schemas.EmailValidation = Depends(), db: Session = Depends(get_db)):
+@router.post('/verify-code', status_code=status.HTTP_200_OK)
+def verify_code(code_validation: schemas.CodeValidation = Depends(), db: Session = Depends(get_db)):
      
-     if not utils.is_code_valid(db, email_validation.code):
+     if not utils.is_code_valid(db, code_validation.code):
           raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, 
                              detail=schemas.DetailError(type="InvalidToken",
                                                         message="Invalid or expired token").model_dump())
      
-     user_verified = db.query(models.Users).filter(and_(models.Users.code == email_validation.code, models.Users.is_validated == False)).first()  # noqa: E712
+     user_verified = db.query(models.Users).filter(and_(models.Users.code == code_validation.code, models.Users.is_validated == False)).first()  # noqa: E712
      
-     user_verified.is_validated = True
+     if code_validation.is_password_recovery:
+        user_verified.password_recovery = True
+     else:
+        user_verified.is_validated = True
+        
      user_verified.code = None
      user_verified.code_expiration = None
      
      db.commit()
      db.refresh(user_verified)
     
-     return user_verified
+     return {"message": "code verified"}
  
-@router.post('/refresh_code', status_code=status.HTTP_200_OK)
-async def refresh_code(email_refresh: schemas.EmailValidation = Depends(), db: Session = Depends(get_db)):
+@router.post('/refresh-code', status_code=status.HTTP_200_OK)
+def refresh_code(email_refresh: schemas.CodeValidation = Depends(), db: Session = Depends(get_db)):
     
     code_response = email_utils.resend_email(db, email_refresh.code)
     
@@ -149,6 +152,25 @@ async def refresh_code(email_refresh: schemas.EmailValidation = Depends(), db: S
     db.refresh(user)
 
     return user
+
+@router.post('/password-recovery', response_model=schemas.GetUsers, status_code=status.HTTP_200_OK)
+def password_recovery(user_credentials: schemas.PasswordRecovery = Depends(), db: Session = Depends(get_db)):
+    
+    code_response = email_utils.send_recovery_email(db, user_credentials.email)
+    if isinstance(code_response, dict) and not code_response.get("status") == 200:
+        raise HTTPException(status_code=code_response.get("status", 500), 
+                             detail=schemas.DetailError(type="ValidationEmailError",
+                                                        message=code_response.get("message", "Unknown error")).model_dump())
+    
+    user_recovery = db.query(models.Users).filter(and_(models.Users.email == user_credentials.email, models.Users.is_validated == True)).first()  # noqa: E712
+    
+    user_recovery.password_recovery = False
+    user_recovery.code_expiration = datetime.now(utc) + timedelta(minutes=float(settings.email_code_expire_minutes))
+    
+    db.commit()
+    db.refresh(user_recovery)
+    
+    return user_recovery
 
 
  

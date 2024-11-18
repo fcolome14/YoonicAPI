@@ -24,9 +24,10 @@ class RegisterUser(UsersBase):
     """ Register user """
     password: str
 
-class EmailValidation(BaseModel):
+class CodeValidation(BaseModel):
     """ Email code verification """
     code: int
+    is_password_recovery: bool
 
 class EmailRefresh(BaseModel):
     """ Refresh email code verification """

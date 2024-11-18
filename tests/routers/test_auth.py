@@ -246,7 +246,7 @@ class TestAuth:
             assert response == mock_user
     
     
-    @pytest.mark.parametrize("email_response, user_found, expected_exception", [
+    @pytest.mark.parametrize("email_response, user_found", [
         
     ({"status": 200, "message": "Recovery email sent"}, True),  # Test Success
     

@@ -7,7 +7,6 @@ import app.models as models
 import app.schemas as schemas
 from app.utils import utils, email_utils
 import app.oauth2 as oauth2
-from datetime import datetime
 
 @pytest.fixture
 def mock_credentials():

@@ -25,6 +25,9 @@ def is_email_taken(db: Session, email: str) -> models.Users | None:
     Returns:
         models.Users | None: User using the email
     """
+    if not isinstance(email, str) or not email:
+        raise ValueError()
+    
     return db.query(models.Users).filter(and_(models.Users.email == email, models.Users.is_validated == True)).first()  # noqa: E712
 
 def is_email_valid(email: str) -> str:

@@ -64,7 +64,7 @@ def password_change(users_credentials: schemas.PasswordChange, db: Session=Depen
     if not utils.is_password_valid(users_credentials.password, user.password):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid Credentials") 
     
-    password_test = utils.is_password_strength(users_credentials.new_password)
+    password_test = utils.is_password_strong(users_credentials.new_password)
     if password_test:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, 
                              detail=schemas.DetailError(type="WeakPassword",

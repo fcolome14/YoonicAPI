@@ -106,7 +106,6 @@ class TestAuth:
     @pytest.mark.parametrize(
         "fetched_data, mocked_function, mock_value, expected_exception, expected_status_code, expected_type, expected_message",
         [
-            # Unverified account scenario
             (schemas.RegisterUser(username="testuser",full_name="Test User",email="testuser@example.com",password="testpassword"),
              "utils.is_account_unverified", True, HTTPException, 400, "UnverifiedAccount", "An account with this email or username exists but is not verified."
              ),
@@ -136,7 +135,7 @@ class TestAuth:
         mocker.patch("app.routers.auth.email_utils.is_email_valid", return_value="testuser@example.com")
         mocker.patch("app.routers.auth.email_utils.is_email_taken", return_value=False)
         mocker.patch("app.routers.auth.utils.is_username_taken", return_value=False)
-        mocker.patch("app.routers.auth.utils.is_password_strength", return_value=None)
+        mocker.patch("app.routers.auth.utils.is_password_strong", return_value=None)
         mocker.patch("app.routers.auth.email_utils.send_validation_email", return_value={"status": 200, "validation_code": 123456})
         
         mocker.patch(f"app.routers.auth.{mocked_function}", return_value=mock_value)

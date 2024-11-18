@@ -7,12 +7,12 @@ Welcome to the YoonicAPI documentation. This API provides endpoints to manage us
    :maxdepth: 2
    :caption: Contents:
 
-   introduction
-   installation
-   usage
-   api_reference
-   contributing
-   changelog
+   app
+   app.database
+   app.routers
+   app.schemas
+   modules
+
 
 API Reference
 -------------
@@ -22,11 +22,6 @@ Below is the auto-generated API reference for the project. It lists all modules,
    :members:
    :undoc-members:
    :show-inheritance:
-
-   app 
-   database
-   routers
-   schemas
 
 Introduction
 ============

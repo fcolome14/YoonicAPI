@@ -1,13 +1,9 @@
 import pytest
-from fastapi import HTTPException
 from app.utils import email_utils
 from pytest_mock import MockerFixture
-from fastapi.security.oauth2 import OAuth2PasswordRequestForm
+from email_validator import EmailUndeliverableError
 import app.models as models
-import app.schemas as schemas
-from app.utils import utils, email_utils
-import app.oauth2 as oauth2
-from datetime import datetime
+from app.utils import email_utils
 
 class TestEmailUtils:
     
@@ -24,8 +20,8 @@ class TestEmailUtils:
         )
         ),
         ])
-    
     def test_is_email_taken(self, mocker: MockerFixture, expected_output, fetched_email):
+        """ Test if email is taken for different invalid inputs """
         
         mock_db_session = mocker.Mock()
         mock_db_session.query().filter().first.return_value = expected_output
@@ -36,13 +32,61 @@ class TestEmailUtils:
     
     
     @pytest.mark.parametrize("fetched_email", [None, 12345,])
-
     def test_is_email_taken_exceptions(self, mocker: MockerFixture, fetched_email):
+        """ Test if email is already taken exceptions """
         
         mock_db_session = mocker.Mock()
         mock_db_session.query().filter().first.return_value = None
         
         with pytest.raises(ValueError):
             email_utils.is_email_taken(mock_db_session, fetched_email)
+    
+    
+    @pytest.mark.parametrize("fetched_email", [
+        "",
+        "email",
+        "email@",
+        "email@example",
+        "email@example.",
+        ])
+    def test_is_email_valid_exceptions(self, mocker: MockerFixture, fetched_email):
+        """ Test validation email format exceptions """
         
+        mock_validate_email = mocker.patch("app.utils.email_utils.validate_email")
+        mock_validate_email.side_effect = EmailUndeliverableError(f"Invalid email: {fetched_email}")
         
+        with pytest.raises(EmailUndeliverableError):
+            email_utils.is_email_valid(fetched_email)
+        
+        mock_validate_email.assert_called_once_with(fetched_email)
+        
+    
+    def test_send_validation_email_success(self, mocker: MockerFixture):
+        """ Test success email sending """
+        
+        mock_db_session = mocker.Mock()
+        mock_response = {
+            "status": 200,
+            "message": "Email sent successfully",
+            "validation_code": 123456
+        }
+
+        mock_send_email = mocker.patch("app.utils.email_utils.send_validation_email", return_value=mock_response)
+        result = email_utils.send_validation_email(mock_db_session, "test@example.com")
+        assert result == mock_response
+        
+        mock_send_email.assert_called_once_with(mock_db_session, "test@example.com")
+
+
+    def test_send_validation_email_exceptions(self, mocker: MockerFixture):
+        """ Test email sending exceptions """
+       
+        mock_response = {
+            "status": 500,
+            "message": "SMTP error occurred: Authentication failed"
+        }
+
+        mock_send_email = mocker.patch("app.utils.email_utils.send_validation_email", return_value=mock_response)
+        result = email_utils.send_validation_email(None, "test@example.com")
+        assert result == mock_response
+        mock_send_email.assert_called_once_with(None, "test@example.com")

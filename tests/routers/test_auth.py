@@ -13,7 +13,7 @@ def mock_credentials():
     return OAuth2PasswordRequestForm(username="test@example.com", password="123456")
 
 class TestAuth:
-    """Authorization tests"""
+    """Auth methods tests """
 
     @pytest.fixture(autouse=True)
     def mock_db_session(self, mocker: MockerFixture):
@@ -32,7 +32,7 @@ class TestAuth:
         return mock_session
     
     def test_login_succeed(self, mock_credentials, mock_db_session, mocker):
-        """ Login succeed test """
+        """ Login success test """
         
         mocker.patch.object(utils, "is_password_valid", return_value=True)
 
@@ -42,6 +42,7 @@ class TestAuth:
         result = login(mock_credentials, mock_db_session)
 
         assert result == {"access_token": mock_token, "token_type": "bearer"}
+
 
     def test_login_user_not_found(self, mock_credentials, mock_db_session):
         """ Login user not found test """
@@ -54,6 +55,7 @@ class TestAuth:
         assert exc_info.value.status_code == 403
         assert exc_info.value.detail == "Invalid Credentials"
 
+
     def test_login_invalid_password(self, mock_credentials, mock_db_session, mocker):
         """ Login invalid password test """
         
@@ -65,6 +67,7 @@ class TestAuth:
         assert exc_info.value.status_code == 403
         assert exc_info.value.detail == "Invalid Credentials"
     
+    
     @pytest.mark.parametrize(
         "fetched_data, expected_result",
         [
@@ -74,6 +77,7 @@ class TestAuth:
         ]
     )
     def test_register_succeed(self, mocker: MockerFixture, fetched_data, expected_result):
+        """ User register test success """
         
         mock_session = mocker.Mock()
         
@@ -102,6 +106,7 @@ class TestAuth:
 
         assert expected_result == response_json
 
+
     @pytest.mark.parametrize(
         "fetched_data, mocked_function, mock_value, expected_exception, expected_status_code, expected_type, expected_message",
         [
@@ -126,6 +131,7 @@ class TestAuth:
     )
     def test_register_exceptions(self, mocker: MockerFixture, fetched_data, mocked_function, mock_value, 
                                       expected_exception, expected_status_code, expected_type, expected_message):
+        """ Register user test raised exceptions """
         
         mock_session = mocker.Mock()
         
@@ -149,6 +155,7 @@ class TestAuth:
 
     @pytest.mark.parametrize("is_code_valid, user_found", [(True, True), (True, False), (False, None)])
     def test_verify_code(self, mocker: MockerFixture, is_code_valid, user_found):
+        """ Verification code test """
         
         mock_db_session = mocker.Mock()
         fetched_data = schemas.CodeValidation(code=123456, is_password_recovery=False)
@@ -189,12 +196,17 @@ class TestAuth:
             assert response == {"message": "code verified"}
 
 
-    @pytest.mark.parametrize("resend_email_response, user_found, expected_exception", [
-        ({"result": 654321, "user_email": "user@example.com"}, True, None),  # Test Success
-        ({"error": "Email not sent", "status": 500}, True, HTTPException),   # Test Error in email resend
-        ({"result": 654321, "user_email": "user@example.com"}, False, HTTPException),  # Test User not found
-            ])
-    def test_refresh_code(self, mocker:MockerFixture, resend_email_response, user_found, expected_exception):
+    @pytest.mark.parametrize("resend_email_response, user_found", [
+        
+        ({"result": 654321, "user_email": "user@example.com"}, True),  # Test Success
+        
+        ({"error": "Email not sent", "status": 500}, True),   # Test Error in email resend
+        
+        ({"result": 654321, "user_email": "user@example.com"}, False),  # Test User not found
+        
+        ])
+    def test_refresh_code(self, mocker:MockerFixture, resend_email_response, user_found):
+        """ Refreshing code test including success and failures """
 
         mock_db_session = mocker.Mock()
         email_refresh = schemas.CodeValidation(code=123456, is_password_recovery=False)
@@ -233,13 +245,19 @@ class TestAuth:
             assert mock_user.code_expiration is not None
             assert response == mock_user
     
+    
     @pytest.mark.parametrize("email_response, user_found, expected_exception", [
-    ({"status": 200, "message": "Recovery email sent"}, True, None),  # Test Success
-    ({"status": 500, "message": "Email service unavailable"}, True, HTTPException),  # Test Email failure
-    ({"status": 200, "message": "Recovery email sent"}, False, HTTPException),  # Test User not found
-        ])
+        
+    ({"status": 200, "message": "Recovery email sent"}, True),  # Test Success
+    
+    ({"status": 500, "message": "Email service unavailable"}, True),  # Test Email failure
+    
+    ({"status": 200, "message": "Recovery email sent"}, False),  # Test User not found
+    
+    ])
     @pytest.mark.skipif
-    def test_password_recovery(self, mocker: MockerFixture, email_response, user_found, expected_exception):
+    def test_password_recovery(self, mocker: MockerFixture, email_response, user_found):
+        """ Password recovery testing including success and failures """
         
         mock_db_session = mocker.Mock()
         user_credentials = schemas.PasswordRecovery(email="user@example.com")

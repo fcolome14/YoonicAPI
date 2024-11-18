@@ -21,6 +21,12 @@ jobs:
       SECRET_KEY: 73283481248249276gsdhvsjdv8734243fsasf4t2245t54544564sd
       ALGORITHM: HS256
       ACCESS_TOKEN_EXPIRE_MINUTES: 40
+      EMAIL: test@gmail.com
+      EMAIL_PASSWORD: test_pwd
+      SMTP_SERVER: smtp.email.com
+      SMTP_PORT: 123
+      DOMAIN: url_path
+      EMAIL_CODE_EXPIRE_MINUTES: 30
 
     steps:
     - uses: actions/checkout@v4

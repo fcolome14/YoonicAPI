@@ -1,48 +1,40 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional, List
-from .bases import LoginBase, UsersBase, DetailError
+from typing import Optional, Any
+from .bases import MetaData, ErrorDetails
 
-class Login(BaseModel):
-    module: str
-    functionality: str
-    args: LoginBase
 
-class CreateUsers(UsersBase):
-    """ Create new user schema """
+#OUTPUTS
+class SuccessResponse(BaseModel):
+    
+    status: str
+    message: str
+    data: Optional[Any] = None
+    meta: Optional[MetaData] = None
+
+class ErrorResponse(BaseModel):
+    
+    status: str
+    message: str
+    data: ErrorDetails
+    meta: Optional[MetaData] = None
+    
+    
+#REGISTER
+class RegisterInput(BaseModel):
+    
+    email: EmailStr
     password: str
-
-class GetUsers(UsersBase):
-    """ Create new user schema """
-    #access_token = str
-    pass
-
-class GetSIngleUser(BaseModel):
-    """ Get single user """
+    full_name: str
     username: str
 
-class RegisterUser(UsersBase):
-    """ Register user """
-    password: str
-
-class CodeValidation(BaseModel):
+#CODE VALIDATION
+class CodeValidationInput(BaseModel):
     """ Email code verification """
     code: int
-    is_password_recovery: bool
 
-class EmailRefresh(BaseModel):
-    """ Refresh email code verification """
+class RecoveryCodeInput(BaseModel):
+    """ Email code verification """
     email: EmailStr
-    old_code: int
 
-class DetailError(BaseModel):
-    """ Detail fail """
-    type: str
-    message: str
-
-class PasswordChange(LoginBase):
-    new_password: str
-    
-class PasswordRecovery(BaseModel):
-    email: EmailStr
 
     

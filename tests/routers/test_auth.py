@@ -1,5 +1,6 @@
 import pytest
 from fastapi import HTTPException
+from app.exception_handlers import custom_http_exception_handler
 from app.routers.auth import login, register_user, verify_code, refresh_code, password_recovery
 from pytest_mock import MockerFixture
 from fastapi.security.oauth2 import OAuth2PasswordRequestForm
@@ -10,10 +11,10 @@ import app.oauth2 as oauth2
 
 @pytest.fixture
 def mock_credentials():
-    return OAuth2PasswordRequestForm(username="test@example.com", password="123456")
+    return OAuth2PasswordRequestForm(username="texample", password="123456")
 
 class TestAuth:
-    """Auth methods tests """
+    """ Auth methods tests """
 
     @pytest.fixture(autouse=True)
     def mock_db_session(self, mocker: MockerFixture):
@@ -24,50 +25,86 @@ class TestAuth:
             email="test@example.com", 
             password="hashed_password", 
             full_name="Test Example", 
-            username="texample"
+            username="texample",
+            is_validated=True
             )
         
         mock_session.query().filter().first.return_value = mock_user
 
-        return mock_session
+        return mock_session, mock_user.email, mock_user.username, mock_user.id
     
-    def test_login_succeed(self, mock_credentials, mock_db_session, mocker):
-        """ Login success test """
+    @pytest.fixture
+    def mock_request(self, mocker: MockerFixture):
+        mock_request = mocker.Mock()
         
-        mocker.patch.object(utils, "is_password_valid", return_value=True)
-
-        mock_token = "mocked_jwt_token"
-        mocker.patch.object(oauth2, "create_access_token", return_value=mock_token)
-
-        result = login(mock_credentials, mock_db_session)
-
-        assert result == {"access_token": mock_token, "token_type": "bearer"}
-
-
-    def test_login_user_not_found(self, mock_credentials, mock_db_session):
-        """ Login user not found test """
+        mock_request.headers = {
+            "request-id": "default_request_id",
+            "client-type": "unknown"
+        }
         
-        mock_db_session.query().filter().first.return_value = None
-
-        with pytest.raises(HTTPException) as exc_info:
-            login(mock_credentials, mock_db_session)
-
-        assert exc_info.value.status_code == 403
-        assert exc_info.value.detail == "Invalid Credentials"
-
-
-    def test_login_invalid_password(self, mock_credentials, mock_db_session, mocker):
-        """ Login invalid password test """
-        
-        mocker.patch.object(utils, "is_password_valid", return_value=False)
-
-        with pytest.raises(HTTPException) as exc_info:
-            login(mock_credentials, mock_db_session)
-
-        assert exc_info.value.status_code == 403
-        assert exc_info.value.detail == "Invalid Credentials"
+        return mock_request
     
     
+    def test_login_success(self, mocker: MockerFixture, mock_db_session, mock_credentials, mock_request):
+        
+        db_session, email, username, id = mock_db_session
+        
+        mocker.patch('app.routers.auth.get_db', return_value=db_session)
+        mocker.patch('app.routers.auth.utils.is_password_valid', return_value=True)
+        
+        expected_output = schemas.SuccessResponse(
+            status="success",
+            message="Login succeed",
+            data={
+                "user_id": id,
+                "username": username,
+                "email": email
+            },
+            meta={
+                "request_id": mock_request.headers.get("request-id"), 
+                "client": mock_request.headers.get("client-type")
+            }
+        )
+        
+        mock_access_token = "mocked_access_token"
+        mock_refresh_token = "mocked_refresh_token"
+        mocker.patch('app.routers.auth.oauth2.create_access_token', return_value=mock_access_token)
+        mocker.patch('app.routers.auth.oauth2.create_refresh_token', return_value=mock_refresh_token)
+        
+        response = login(user_credentials=mock_credentials, db=db_session, request=mock_request)
+
+        assert response == expected_output
+
+    def test_login_exceptions(self, mocker: MockerFixture, mock_db_session, mock_credentials, mock_request):
+        
+        db_session, _, _, _ = mock_db_session
+        
+        mocker.patch('app.routers.auth.get_db', return_value=db_session)
+        mocker.patch('app.routers.auth.utils.is_password_valid', return_value=False)
+        
+        # expected_output = schemas.ErrorResponse(
+        #     status="error",
+        #     message="Invalid Credentials",
+        #     data={
+        #         "type": "validation_error",
+        #         "details": "403: Invalid Credentials"
+        #     },
+        #     meta={
+        #         "request_id": mock_request.headers.get("request-id"), 
+        #         "client": mock_request.headers.get("client-type")
+        #     }
+        # )
+        
+        expected_error = "Invalid Credentials"
+        
+        with pytest.raises(HTTPException) as exception_data:
+            login(user_credentials=mock_credentials, db=db_session, request=mock_request)
+
+        exception = exception_data.value
+        
+        assert expected_error == exception.detail
+
+
     @pytest.mark.parametrize(
         "fetched_data, expected_result",
         [
@@ -91,7 +128,7 @@ class TestAuth:
         mock_hashed_password = "hashed_testpassword"
         mocker.patch("app.routers.auth.utils.hash_password", return_value=mock_hashed_password)
         
-        mocker.patch("app.routers.auth.email_utils.send_validation_email", return_value={"validation_code": 123456, "status": 200})
+        mocker.patch("app.routers.auth.email_utils.send_email", return_value={"validation_code": 123456, "status": 200})
         
         response = register_user(fetched_data, mock_session)
         
@@ -125,7 +162,7 @@ class TestAuth:
              ),
             
             (schemas.RegisterUser(username="testuser",full_name="Test User",email="testuser@example.com",password="testpassword123"),
-             "email_utils.send_validation_email", {"status": 500, "message": "Internal error"}, HTTPException, 500, "ValidationEmailError", "Internal error"
+             "email_utils.send_email", {"status": 500, "message": "Internal error"}, HTTPException, 500, "ValidationEmailError", "Internal error"
              ),
         ]
     )
@@ -141,7 +178,7 @@ class TestAuth:
         mocker.patch("app.routers.auth.email_utils.is_email_taken", return_value=False)
         mocker.patch("app.routers.auth.utils.is_username_taken", return_value=False)
         mocker.patch("app.routers.auth.utils.is_password_strong", return_value=True)
-        mocker.patch("app.routers.auth.email_utils.send_validation_email", return_value={"status": 200, "validation_code": 123456})
+        mocker.patch("app.routers.auth.email_utils.send_email", return_value={"status": 200, "validation_code": 123456})
         
         mocker.patch(f"app.routers.auth.{mocked_function}", return_value=mock_value)
         

@@ -195,13 +195,19 @@ def register_user(user_credentials: schemas.RegisterInput, db: Session = Depends
 def verify_code(code_validation: schemas.CodeValidationInput, db: Session = Depends(get_db), request: Request = None):
      
      response = utils.is_code_valid(db, code_validation.code)
-     if not response.get("status"):
+     if response.get("status") == "error":
           raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, 
                              detail=schemas.ErrorDetails(type="Validation",
                                                         message=response.get("details"),
                                                         details=None).model_dump())
      
      user_verified = db.query(models.Users).filter(and_(models.Users.code == code_validation.code)).first()  # noqa: E712
+     
+     if not user_verified:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, 
+                            detail=schemas.ErrorDetails(type="Validation",
+                                                    message="User not found",
+                                                    details=None).model_dump())
         
      user_verified.is_validated = True
      user_verified.code = None

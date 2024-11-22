@@ -4,7 +4,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from app.schemas import ErrorResponse, ErrorDetails, MetaData
 
-async def custom_http_exception_handler(request: Request, exc: HTTPException):
+def custom_http_exception_handler(request: Request, exc: HTTPException):
     
     exc_detail = exc.detail
     

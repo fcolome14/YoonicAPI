@@ -133,11 +133,11 @@ def is_code_valid(db: Session, code: int) -> Union[bool, str]:
     fetched_record = db.query(models.Users).filter(models.Users.code == code).first()  # noqa: E712
     
     if not fetched_record or not fetched_record.code_expiration:
-        return {"status": False, "details": "Code not found"}
+        return {"status": "error", "details": "Code not found"}
     if fetched_record.code_expiration < datetime.utcnow().replace(tzinfo=utc):
-        return {"status": False, "details": "Expired code"}
+        return {"status": "error", "details": "Expired code"}
     
-    return {"status": True, "details": "Verified code"}
+    return {"status": "success", "details": "Verified code"}
 
 
 def generate_code(db: Session) -> int:

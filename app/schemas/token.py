@@ -1,11 +1,10 @@
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime
 
-class Token(BaseModel):
-    """ JWT returned after succeed login """
-    
-    access_token: str
-    token_type: str
+class TokenSchema(BaseModel):
+    access_token:str
+    refresh_token:str
 
 class TokenData(BaseModel):
     """ JWT input """

@@ -3,14 +3,17 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import time
 from app.config import settings
-# from app.routers import products, users, auth
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import users
-from app.routers import auth
+from app.routers import users, auth
+import firebase_admin
+from app.exception_handlers import custom_http_exception_handler
+from fastapi.exceptions import HTTPException
 
 app = FastAPI()
-origins = ["http://www.google.com"]
+firebase_admin.initialize_app()
+print(f"Firebase project '{firebase_admin.get_app().project_id}' initialized")
 
+origins = ["http://www.google.com", settings.domain]
 #Handle CORS
 app.add_middleware(
     CORSMiddleware,
@@ -19,6 +22,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_exception_handler(HTTPException, custom_http_exception_handler)
 
 while True:
     try:

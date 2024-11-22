@@ -1,36 +1,18 @@
-from fastapi import Depends, APIRouter, status, HTTPException
+from fastapi import Depends, APIRouter, status, HTTPException, Request
 from sqlalchemy.orm import Session
 from app.database.connection import get_db
+from fastapi.security.oauth2 import OAuth2PasswordRequestForm
 import app.models as models
 from sqlalchemy import or_, and_
 import app.schemas as schemas
 from app.utils import email_utils, utils
+from typing import Annotated
+from app.config import get_firebase_user_from_token
+
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
-@router.post("/", status_code=status.HTTP_201_CREATED, response_model=schemas.GetUsers)
-def create_users(users: schemas.CreateUsers, db: Session=Depends(get_db)):
-    """Create new user
-
-    Args:
-        users (schemas.CreateUsers): Input schema
-        db (Session, optional): Database session. Defaults to Depends(get_db).
-
-    Returns:
-        _type_: User data
-    """
-    
-    hashed_pwd = utils.hash(users.password)
-    users.password = hashed_pwd
-    
-    new_user = models.Users(**users.model_dump())
-    db.add(new_user)
-    db.commit()
-    
-    return new_user
-
-
-@router.get("/{username}", status_code=status.HTTP_200_OK, response_model=schemas.GetUsers)
+@router.get("/{username}", status_code=status.HTTP_200_OK, response_model=schemas.SuccessResponse)
 def get_users(username: str, db: Session=Depends(get_db)):
     """Get user data
 
@@ -52,28 +34,48 @@ def get_users(username: str, db: Session=Depends(get_db)):
     
     return users
 
-@router.post("/password_change", status_code=status.HTTP_201_CREATED, response_model=schemas.GetUsers)
-def password_change(users_credentials: schemas.PasswordChange, db: Session=Depends(get_db)):
+@router.get("/userid")
+async def get_userid(user: Annotated[dict, Depends(get_firebase_user_from_token)]):
+    """gets the firebase connected user"""
+    return {"id": user["uid"]}
+
+
+@router.post("/change_password", status_code=status.HTTP_201_CREATED, response_model=schemas.SuccessResponse)
+def password_change(user_credentials: OAuth2PasswordRequestForm = Depends(), db: Session=Depends(get_db), request: Request = None):
     
-    user = db.query(models.Users).filter(and_(models.Users.email == users_credentials.email,  
+    
+    user = db.query(models.Users).filter(and_(models.Users.username == user_credentials.username,  
                                                models.Users.is_validated == True)).first() # noqa: E712
     
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Active user not found") 
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, 
+                             detail=schemas.ErrorDetails(type="PasswordChange",
+                                                        message="No user found",
+                                                        details=None).model_dump())
     
-    if not utils.is_password_valid(users_credentials.password, user.password):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid Credentials") 
-    
-    password_test = utils.is_password_strong(users_credentials.new_password)
-    if password_test:
+    if utils.is_password_valid(user_credentials.password, user.password):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, 
-                             detail=schemas.DetailError(type="WeakPassword",
-                                                        message=f"Weak password: {password_test}").model_dump())
-        
-    if utils.is_user_valid(db, users_credentials.email, users_credentials.password):
-        user.password = utils.hash_password(users_credentials.new_password)
-        db.commit()
-        db.refresh(user)
-        return user
+                             detail=schemas.ErrorDetails(type="PasswordChange",
+                                                        message="New password must be different from old one",
+                                                        details=None).model_dump())
     
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    if not utils.is_password_strong(user_credentials.password):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, 
+                             detail=schemas.ErrorDetails(type="PasswordChange",
+                                                        message="Weak password",
+                                                        details=None).model_dump())
+    
+    user.password = utils.hash_password(user_credentials.password)
+    
+    db.commit()
+    db.refresh(user)
+    
+    return schemas.SuccessResponse(
+        status="success",
+        message="Password changed",
+        data={},
+        meta={
+            "request_id": request.headers.get("request-id", "default_request_id"),
+            "client": request.headers.get("client-type", "unknown"),
+        }
+    )

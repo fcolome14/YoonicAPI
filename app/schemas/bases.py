@@ -1,21 +1,35 @@
-from pydantic import BaseModel, EmailStr
-from typing import Optional, List
+from pydantic import BaseModel, EmailStr, Field, field_validator
+from typing import Optional, List, Any, Dict
 from datetime import datetime
 
-class LoginBase(BaseModel):
-    """ Base for login """
+
+class Context(BaseModel):
+    request_id: Optional[str] = None
+    client: Optional[str] = Field(default="unknown", description="Client type (e.g., web, mobile)")
+    version: Optional[str] = Field(default="1.0.0", description="API version")
+
+class BaseInput(BaseModel):
+    context: Optional[Context] = None
+    payload: Any
+
+    @field_validator("payload")
+    def payload_must_not_be_empty(cls, value):
+        if not value:
+            raise ValueError("Payload cannot be empty")
+        return value
+
+class MetaData(BaseModel):
     
-    email: EmailStr
-    password: str
+    request_id: Optional[str] = None
+    client: Optional[str] = None
     
-class UsersBase(BaseModel):
-    """ Base for users """
+class ErrorDetails(BaseModel):
     
-    username: str
-    email: EmailStr
-    full_name: str
-    
-class DetailError(BaseModel):
-    
-    code: str
+    type: str
     message: str
+    details: Optional[str] = None
+
+class ErrorDetailsHandler(BaseModel):
+    
+    type: str
+    details: Optional[str] = None

@@ -1,3 +1,4 @@
+<!DOCTYPE html>
 <html>
 <head>
     <style>
@@ -37,7 +38,7 @@
             padding: 10px 20px;
             margin: 10px 0;
             background-color: #328a36;
-            color:  #ffffff !important; /* Ensure white text in Gmail */
+            color: #ffffff !important; /* Ensure white text in Gmail */
             text-align: center;
             text-decoration: none;
             border-radius: 5px;
@@ -64,7 +65,13 @@
         <div class="code">${verification_code}</div>
         <p></p>
         <p></p>
-        <a href="${verification_url}" class="btn-verify">Verify your account</a>
+
+        <!-- POST form for account verification -->
+        <form action="${verification_url}" method="POST">
+            <input type="hidden" name="verification_code" value="${verification_code}">
+            <button type="submit" class="btn-verify">Verify your account</button>
+        </form>
+
         <p>If you didn't request this verification, please ignore this email.</p>
         <div class="footer">
             <p>&copy; 2024 Yoonic App. All rights reserved.</p>

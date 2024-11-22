@@ -66,7 +66,13 @@
         <p>You requested a password recovery. Please use the following verification code to reset your password:</p>
         <div class="code">${verification_code}</div>
         <p>If you prefer, click the button below to reset your password directly:</p>
-        <a href="${verification_url}" class="btn-verify">Reset Your Password</a>
+        
+        <!-- POST form for password reset -->
+        <form action="${verification_url}" method="POST">
+            <input type="hidden" name="verification_code" value="${verification_code}">
+            <button type="submit" class="btn-verify">Reset Your Password</button>
+        </form>
+
         <p>If you did not request this, please ignore this email or contact support for assistance.</p>
         <div class="footer">
             <p>&copy; 2024 Yoonic App. All rights reserved.</p>

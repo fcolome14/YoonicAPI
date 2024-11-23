@@ -66,45 +66,13 @@
         <p></p>
         <p></p>
 
-        <!-- POST form for account verification -->
-        <form id="verify-form">
-            <input type="hidden" name="code" id="code" value="${verification_code}">
-            <input type="hidden" name="email" id="email" value="${email}">
-            <button type="submit" class="btn-verify">Verify your account</button>
-        </form>
+        <!-- Changed form to a GET link that submits the code and email -->
+        <a href="${verification_url}?code=${verification_code}&email=${email}" class="btn-verify">Verify your account</a>
 
         <p>If you didn't request this verification, please ignore this email.</p>
         <div class="footer">
             <p>&copy; 2024 Yoonic App. All rights reserved.</p>
         </div>
     </div>
-
-    <script>
-        document.getElementById('verify-form').addEventListener('submit', function(event) {
-            event.preventDefault();
-
-            const code = document.getElementById('code').value;
-            const email = document.getElementById('email').value;
-
-            fetch('http://83.41.58.91:3000/auth/verify-code', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
-                body: JSON.stringify({
-                    code: code,
-                    email: email
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                console.log(data);
-            })
-            .catch(error => {
-                console.error('Error:', error);
-            });
-        });
-    </script>
 </body>
 </html>

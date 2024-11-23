@@ -194,14 +194,15 @@ def register_user(user_credentials: schemas.RegisterInput, db: Session = Depends
     )
  
  
-@router.post('/verify-code', status_code=status.HTTP_200_OK)
+@router.get('/verify-code', status_code=status.HTTP_200_OK)
 def verify_code(
-    code_validation: schemas.CodeValidationInput,
+    code: int,
+    email: str,
     db: Session = Depends(get_db),
     request: Request = None,
-    ):
-    
-    response = utils.is_code_valid(db, code_validation.code, code_validation.email)
+):
+    # Validate the code using your utility function
+    response = utils.is_code_valid(db, code, email)
     if response.get("status") == "error":
         message = response.get("details", "An error occurred during verification.")
         return templates.TemplateResponse(
@@ -213,7 +214,8 @@ def verify_code(
             },
         )
     
-    user_verified = db.query(models.Users).filter(models.Users.code == code_validation.code).first()
+    # Check if user exists with the given code
+    user_verified = db.query(models.Users).filter(models.Users.code == code).first()
     if not user_verified:
         message = "The user associated with this code was not found."
         return templates.TemplateResponse(
@@ -224,7 +226,8 @@ def verify_code(
                 "success": False,
             },
         )
-        
+
+    # Proceed with verification
     user_verified.is_validated = True
     user_verified.code = None
     user_verified.code_expiration = None

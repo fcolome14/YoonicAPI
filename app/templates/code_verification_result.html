@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verification Result</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            padding: 20px;
+        }
+        .email-container {
+            max-width: 600px;
+            margin: auto;
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            text-align: center;
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .message {
+            font-size: 18px;
+            color: #333;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .instructions {
+            font-size: 16px;
+            color: #666;
+            text-align: center;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header">{{ message }}</div>
+        <p class="instructions">
+            {% if success %}
+                Your email has been successfully verified. You can now access all the features of your account.
+                If you have any issues, please contact our support team.
+            {% else %}
+                The verification process failed. Please ensure you entered the correct code sent to your email.
+                If the issue persists, try requesting a new verification code.
+            {% endif %}
+        </p>
+    </div>
+</body>
+</html>

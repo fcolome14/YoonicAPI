@@ -6,10 +6,16 @@ from app.config import settings
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import users, auth
 import firebase_admin
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from app.exception_handlers import custom_http_exception_handler
 from fastapi.exceptions import HTTPException
 
 app = FastAPI()
+
+app.mount("/static", StaticFiles(directory="app/templates"), name="static")
+templates = Jinja2Templates(directory="app/templates")
+
 firebase_admin.initialize_app()
 print(f"Firebase project '{firebase_admin.get_app().project_id}' initialized")
 

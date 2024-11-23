@@ -31,6 +31,7 @@ class RegisterInput(BaseModel):
 class CodeValidationInput(BaseModel):
     """ Email code verification """
     code: int
+    email: EmailStr
 
 class RecoveryCodeInput(BaseModel):
     """ Email code verification """

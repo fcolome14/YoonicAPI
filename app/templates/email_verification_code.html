@@ -69,6 +69,7 @@
         <!-- POST form for account verification -->
         <form action="${verification_url}" method="POST">
             <input type="hidden" name="verification_code" value="${verification_code}">
+            <input type="hidden" name="recipient_email" value="${recipient_email}">
             <button type="submit" class="btn-verify">Verify your account</button>
         </form>
 

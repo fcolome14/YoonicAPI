@@ -10,8 +10,11 @@ from app.utils import email_utils, utils
 import app.oauth2 as oauth2
 from datetime import datetime, timedelta
 import pytz
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 
 router = APIRouter(prefix="/auth", tags=['Authentication'])
+templates = Jinja2Templates(directory="app/templates")
 utc = pytz.UTC
 
 
@@ -191,39 +194,52 @@ def register_user(user_credentials: schemas.RegisterInput, db: Session = Depends
     )
  
  
-@router.post('/verify-code', response_model=schemas.SuccessResponse, status_code=status.HTTP_200_OK,)
-def verify_code(code_validation: schemas.CodeValidationInput, db: Session = Depends(get_db), request: Request = None):
-     
-     response = utils.is_code_valid(db, code_validation.code)
-     if response.get("status") == "error":
-          raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, 
-                             detail=schemas.ErrorDetails(type="Validation",
-                                                        message=response.get("details"),
-                                                        details=None).model_dump())
-     
-     user_verified = db.query(models.Users).filter(and_(models.Users.code == code_validation.code)).first()  # noqa: E712
-     
-     if not user_verified:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, 
-                            detail=schemas.ErrorDetails(type="Validation",
-                                                    message="User not found",
-                                                    details=None).model_dump())
-        
-     user_verified.is_validated = True
-     user_verified.code = None
-     user_verified.code_expiration = None
-     
-     db.commit()
-     db.refresh(user_verified)
+@router.post('/verify-code', status_code=status.HTTP_200_OK)
+def verify_code(
+    code_validation: schemas.CodeValidationInput,
+    db: Session = Depends(get_db),
+    request: Request = None,
+    ):
     
-     return schemas.SuccessResponse(
-        status="success",
-        message=response.get("details"),
-        data={},
-        meta={
-            "request_id": request.headers.get("request-id", "default_request_id"),
-            "client": request.headers.get("client-type", "unknown"),
-        }
+    response = utils.is_code_valid(db, code_validation.code, code_validation.email)
+    if response.get("status") == "error":
+        message = response.get("details", "An error occurred during verification.")
+        return templates.TemplateResponse(
+            "code_verification_result.html",
+            {
+                "request": request,
+                "message": message,
+                "success": False,
+            },
+        )
+    
+    user_verified = db.query(models.Users).filter(models.Users.code == code_validation.code).first()
+    if not user_verified:
+        message = "The user associated with this code was not found."
+        return templates.TemplateResponse(
+            "code_verification_result.html",
+            {
+                "request": request,
+                "message": message,
+                "success": False,
+            },
+        )
+        
+    user_verified.is_validated = True
+    user_verified.code = None
+    user_verified.code_expiration = None
+
+    db.commit()
+    db.refresh(user_verified)
+
+    message = response.get("details", "Your verification was successful!")
+    return templates.TemplateResponse(
+        "code_verification_result.html",
+        {
+            "request": request,
+            "message": message,
+            "success": True,
+        },
     )
  
  
@@ -330,6 +346,3 @@ def test(email_refresh: schemas.CodeValidationInput, db: Session = Depends(get_d
             "client": None,
         }
     )
-
- 
-         

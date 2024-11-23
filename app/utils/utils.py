@@ -119,7 +119,7 @@ def is_account_unverified(db: Session, email: str, username: str):
                                               models.Users.is_validated == False,  # noqa: E712
                                               models.Users.username == username)).first() is not None
 
-def is_code_valid(db: Session, code: int) -> Union[bool, str]:
+def is_code_valid(db: Session, code: int, email: str) -> Union[bool, str]:
     """Check if code has not expired and still exists
 
     Args:
@@ -130,7 +130,7 @@ def is_code_valid(db: Session, code: int) -> Union[bool, str]:
         bool: True if valid, False if not
     """
     
-    fetched_record = db.query(models.Users).filter(models.Users.code == code).first()  # noqa: E712
+    fetched_record = db.query(models.Users).filter(and_(models.Users.code == code, models.Users.email == email)).first()  # noqa: E712
     
     if not fetched_record or not fetched_record.code_expiration:
         return {"status": "error", "details": "Code not found"}

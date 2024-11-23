@@ -41,7 +41,7 @@ def is_email_valid(email: str) -> str:
     """
     return validate_email(email).email
 
-def send_email(db: Session, recipient_email: str, template: int = 0):
+def send_email(db: Session, email: str, template: int = 0):
     """Send email with a code
 
     Args:
@@ -71,7 +71,7 @@ def send_email(db: Session, recipient_email: str, template: int = 0):
 
     verification_url = f"{settings.domain}{VERIFY_CODE_ROUTE}"
     template = Template(template_content)
-    html_content = template.substitute(verification_code=validation_code, verification_url=verification_url, recipient_email=recipient_email)
+    html_content = template.substitute(verification_code=validation_code, verification_url=verification_url, email=email)
 
     msg = MIMEMultipart()
     msg['From'] = settings.email

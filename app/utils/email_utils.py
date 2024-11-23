@@ -69,9 +69,9 @@ def send_email(db: Session, recipient_email: str, template: int = 0):
     except FileNotFoundError:
         return {"status": "error", "message": "Email verification code template not found"}
 
-    verification_url = f"{settings.domain}{VERIFY_CODE_ROUTE}/{quote_plus(validation_code)}?is_recovery=false"
+    verification_url = f"{settings.domain}{VERIFY_CODE_ROUTE}/{quote_plus(validation_code)}"
     template = Template(template_content)
-    html_content = template.substitute(verification_code=validation_code, verification_url=verification_url)
+    html_content = template.substitute(verification_code=validation_code, verification_url=verification_url, recipient_email=recipient_email)
 
     msg = MIMEMultipart()
     msg['From'] = settings.email

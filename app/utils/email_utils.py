@@ -46,7 +46,7 @@ def send_email(db: Session, email: str, template: int = 0):
 
     Args:
         db (Session): Database connection.
-        recipient_email (str): Email
+        email (str): Email
         template (int, optional): Used HTML template {0: Account verification, 1: Password recovery}. Defaults to 0.
 
     Returns:
@@ -75,7 +75,7 @@ def send_email(db: Session, email: str, template: int = 0):
 
     msg = MIMEMultipart()
     msg['From'] = settings.email
-    msg['To'] = recipient_email
+    msg['To'] = email
     msg['Subject'] = subject
     msg.attach(MIMEText(html_content, 'html'))
     
@@ -83,7 +83,7 @@ def send_email(db: Session, email: str, template: int = 0):
         server = smtplib.SMTP(settings.smtp_server, settings.smtp_port)
         server.starttls()
         server.login(settings.email, settings.email_password)
-        server.sendmail(settings.email, recipient_email, msg.as_string())
+        server.sendmail(settings.email, email, msg.as_string())
         server.quit()
 
         return {"status": "success", "message": validation_code}

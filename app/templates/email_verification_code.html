@@ -86,7 +86,7 @@
             const code = document.getElementById('code').value;
             const email = document.getElementById('email').value;
 
-            fetch('${verification_url}', {
+            fetch('http://83.41.58.91:3000/auth/verify-code', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

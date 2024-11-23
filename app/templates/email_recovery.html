@@ -69,8 +69,8 @@
         
         <!-- POST form for password reset -->
         <form action="${verification_url}" method="POST">
-            <input type="hidden" name="verification_code" value="${verification_code}">
-            <input type="hidden" name="recipient_email" value="${email}">
+            <input type="hidden" name="code" value="${verification_code}">
+            <input type="hidden" name="email" value="${email}">
             <button type="submit" class="btn-verify">Reset Your Password</button>
         </form>
 

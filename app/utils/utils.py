@@ -89,18 +89,22 @@ def is_password_strong(plain_password: str) -> bool:
     return True 
 
 
-def is_username_taken(db: Session, username: str):
-    """Checks if a username already exists
+def is_username_email_taken(db: Session, username: str, email: str) -> models.Users | None:
+    """Check for an existing username or email
 
     Args:
         db (Session): Database connection
-        username (str): Username to check
+        username (str): Username
+        email (str): Email
 
     Returns:
-        _type_: User if exists or None
+        models.Users | None: Field value if found
     """
     
-    return db.query(models.Users).filter(models.Users.username == username).first() is not None  # noqa: E712
+    user = db.query(models.Users.email).filter(models.Users.email == email).first() is not None  # noqa: E712
+    if user:
+        return user
+    return db.query(models.Users.username).filter(models.Users.username == username).first() is not None  # noqa: E712
 
 
 def is_account_unverified(db: Session, email: str, username: str):
@@ -123,11 +127,12 @@ def is_code_valid(db: Session, code: int, email: str) -> Union[bool, str]:
     """Check if code has not expired and still exists
 
     Args:
-        db (Session): Database connection
+        db (Session): _description_
         code (int): Code to check
+        email (str): Email
 
     Returns:
-        bool: True if valid, False if not
+        Union[bool, str]: True if valid, False if not
     """
     
     fetched_record = db.query(models.Users).filter(and_(models.Users.code == code, models.Users.email == email)).first()  # noqa: E712
@@ -139,7 +144,13 @@ def is_code_valid(db: Session, code: int, email: str) -> Union[bool, str]:
     
     return {"status": "success", "details": "Verified code"}
 
-
+def is_code_expired(db: Session, email: str, code: int) -> bool:
+    
+    fetched_record = db.query(models.Users).filter(and_(models.Users.code == code, models.Users.email == email)).first()
+    if fetched_record and fetched_record.code_expiration > datetime.utcnow().replace(tzinfo=utc):
+        return True
+    return False
+    
 def generate_code(db: Session) -> int:
     """Generates unique random code
 

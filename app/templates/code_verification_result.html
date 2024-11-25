@@ -36,6 +36,15 @@
             text-align: center;
             margin-top: 10px;
         }
+        .email-link {
+            color: #328a36; /* Green color for the link */
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        .email-link:hover {
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
@@ -43,8 +52,13 @@
         <div class="header">{{ message }}</div>
         <p class="instructions">
             {% if success %}
-                Your email has been successfully verified. You can now access all the features of your account.
+                Your account has been successfully verified. You can now sign in to Yoonic app.
                 If you have any issues, please contact our support team.
+                <br>
+                <!-- Center the plain email link -->
+                <div style="text-align: center;">
+                    <a href="mailto:{{email}}?subject=Your%20Subject&body=Your%20Message%20Here" class="email-link">{{email}}</a>
+                </div>
             {% else %}
                 The verification process failed. Please ensure you entered the correct code sent to your email.
                 If the issue persists, try requesting a new verification code.

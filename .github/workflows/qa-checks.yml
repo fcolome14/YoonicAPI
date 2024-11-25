@@ -29,6 +29,9 @@ jobs:
       DOMAIN: url_path
       EMAIL_CODE_EXPIRE_MINUTES: 30
       GOOGLE_APPLICATION_CREDENTIALS: "test_file"
+      NOMINATIM_BASE_URL: "test"
+      USER_AGENT: "test"
+
 
     steps:
     - uses: actions/checkout@v4

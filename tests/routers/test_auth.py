@@ -2,13 +2,19 @@ import pytest
 from fastapi import HTTPException
 from app.exception_handlers import custom_http_exception_handler
 from app.routers.auth import login, register_user, verify_code, refresh_code, password_recovery
+from app.config import settings
 from pytest_mock import MockerFixture
 from fastapi.security.oauth2 import OAuth2PasswordRequestForm
 import app.models as models
 import app.schemas as schemas
 import json
-from app.utils import utils, email_utils
+import jwt
+from datetime import datetime, timedelta
 import app.oauth2 as oauth2
+from fastapi.templating import Jinja2Templates
+
+templates = Jinja2Templates(directory="app/templates")
+
 
 @pytest.fixture
 def mock_credentials():
@@ -28,7 +34,8 @@ class TestAuth:
             full_name="Test Example", 
             username="texample",
             code=123456,
-            is_validated=True
+            is_validated=True,
+            code_expiration=datetime(2024, 11, 25, 19, 21, 17, 830431)
             )
         
         mock_session.query().filter().first.return_value = mock_user
@@ -140,7 +147,6 @@ class TestAuth:
         
         assert expected_error == error_response
 
-
     def test_register_succeed(self, mocker: MockerFixture, mock_db_session, mock_request):
         """ User register test success """
         
@@ -148,7 +154,7 @@ class TestAuth:
         
         db_session.query().filter().first.return_value = None
         mocker.patch("app.routers.auth.utils.is_account_unverified", return_value=None)
-        mocker.patch("app.routers.auth.utils.is_username_taken", return_value=None)
+        mocker.patch("app.routers.auth.utils.is_username_email_taken", return_value=None)
         mocker.patch("app.routers.auth.utils.is_password_strong", return_value=True)
         mocker.patch("app.routers.auth.email_utils.send_email", return_value={"status": "success", "message": 123456})
         mock_hashed_password = "hashed_testpassword"
@@ -178,7 +184,6 @@ class TestAuth:
 
         assert expected_output == response
 
-
     @pytest.mark.parametrize(
         "fetched_data, mocked_function, mock_value, message, details",
         [
@@ -187,7 +192,7 @@ class TestAuth:
              ),
             
             (schemas.RegisterInput(username="testuser", full_name="Test User", email="testuser@example.com", password=""),
-             "utils.is_username_taken", True, "Username exists", "Username 'testuser' is already taken"
+             "utils.is_username_email_taken", True, "Username or Email already exists", "Username 'testuser' or 'testuser@example.com' is already taken"
              ),
             
             (schemas.RegisterInput(username="testuser", full_name="Test User", email="testuser@example.com", password=""),
@@ -211,7 +216,7 @@ class TestAuth:
         
         db_session.query().filter().first.return_value = None
         mocker.patch("app.routers.auth.utils.is_account_unverified", return_value=None)
-        mocker.patch("app.routers.auth.utils.is_username_taken", return_value=False)
+        mocker.patch("app.routers.auth.utils.is_username_email_taken", return_value=False)
         mocker.patch("app.routers.auth.utils.is_password_strong", return_value=True)
         mocker.patch("app.routers.auth.email_utils.send_email", return_value={"status": "success", "message": 123456})
         
@@ -240,78 +245,129 @@ class TestAuth:
         
         assert expected_error == error_response
     
-    #TODO: Fix _verify_code tests
-    
-    # @pytest.mark.parametrize("mock_value", [
-    #     {"status": "success", "details": "Verification successful!"}
-    #     ])
-    
-    # def test_verify_code_succeed(self, mocker: MockerFixture, mock_db_session, mock_request, mock_value):
-    #     """Verification code test success case"""
+    def test_verify_code_succeed(self, mocker: MockerFixture, mock_db_session, mock_request):
+        """Verification code test succeed case"""
 
-    #     db_session, user = mock_db_session
+        db_session, user = mock_db_session
+        data = {"email": user.email, "code": 123456}
+        fetched_data = oauth2.create_email_code_token(data)
 
-    #     fetched_data = schemas.CodeValidationInput(code=123456, email=user.email)
-    #     mock_is_code_valid = mocker.patch("app.routers.auth.utils.is_code_valid", return_value=mock_value)
+        mock_is_code_valid_result = {"status": "success", "details": "Verified code"}
+        mock_decode_email_code_token = mocker.patch("app.routers.auth.oauth2.decode_email_code_token", return_value={"status": "success", "message": data})
+        mocker.patch("app.routers.auth.utils.is_code_valid", return_value=mock_is_code_valid_result)
+        mock_user_query = mocker.patch.object(db_session, "query")
+        mock_user_query.return_value.filter.return_value.first.return_value = user
+        mock_setting_email = mocker.patch("app.config.settings.email", return_value=user.email)
 
-    #     with mocker.patch('app.routers.auth.templates.TemplateResponse') as mock_template:
-    #         mock_template.return_value = mocker.Mock()  # Ensure it doesn't return None
-            
-    #         db_session.query().filter().first.return_value = user
-            
+        expected_output = templates.TemplateResponse(
+            "code_verification_result.html",
+            {
+                "request": mock_request,
+                "message": mock_is_code_valid_result.get("details", "Your verification was successful!"),
+                "email": mock_setting_email,
+                "success": True if mock_is_code_valid_result.get("status") == "success" else False,
+            },
+        ).body.decode("utf-8")
 
-    #         response = verify_code(fetched_data, db_session, mock_request)
-            
-    #         mock_template.assert_called_once()
+        response = verify_code(token=fetched_data, db=db_session, request=mock_request)
 
-    #         args, kwargs = mock_template.call_args
-    #         assert kwargs["context"]["message"] == "Verification successful!"
-    #         assert kwargs["context"]["success"] is True
-
-    
-    # @pytest.mark.parametrize("mock_value, user", [
-    #     ({"status": "error", "details": "Code not found"}, models.Users(id=1, email= "test", username="test", code=1234)), 
-    #     ])
-    
-    # def test_verify_code_exceptions(self, mock_db_session, mock_value, mock_request, user):
-    #     """ Verification code test """
+        mock_decode_email_code_token.assert_called_once_with(fetched_data)
         
-    #     db_session, _ = mock_db_session
+        assert response.body.decode("utf-8").strip() == expected_output.strip()
+    
+    
+    @pytest.mark.parametrize("expected_message", [
+        {"status": "error", "details": "Code not found"},
         
-    #     fetched_data = schemas.CodeValidationInput(code=123456)
-    #     db_session.patch("app.routers.auth.utils.is_code_valid", return_value=mock_value)
-    #     db_session.query().filter().first.return_value = user
-
-    #     expected_error = {
-    #             "status": "error",
-    #             "message": mock_value['details'],
-    #             "data": {
-    #                 "type": "Validation",
-    #                 "message":  mock_value['details'],
-    #                 "details": None
-    #             },
-    #             "meta": {
-    #                 "request_id": mock_request.headers.get("request-id"),
-    #                 "client": mock_request.headers.get("client-type")
-    #             }
-    #         }
+        {"status": "error", "details": "Expired code"}
         
-    #     with pytest.raises(HTTPException) as exception_data:
-    #         verify_code(code_validation=fetched_data, db=db_session, request=mock_request)
+        ])
+    
+    def test_verify_code_errors(self, mocker: MockerFixture, mock_db_session, mock_request, expected_message):
+        """Verification code test errors case"""
 
-    #     error_output = custom_http_exception_handler(mock_request, exception_data.value)
-    #     error_body = error_output.body.decode("utf-8")
-    #     error_response = json.loads(error_body)
+        db_session, user = mock_db_session
+        data = {"email": user.email, "code": 123456}
+        fetched_data = oauth2.create_email_code_token(data)
+
+        mock_decode_email_code_token = mocker.patch("app.routers.auth.oauth2.decode_email_code_token", return_value={"status": "success", "message": data})
+        mocker.patch("app.routers.auth.utils.is_code_valid", return_value=expected_message)
+        mock_user_query = mocker.patch.object(db_session, "query")
+        mock_user_query.return_value.filter.return_value.first.return_value = user if expected_message.get("status")== "success" else None
+
+        expected_output = templates.TemplateResponse(
+            "code_verification_result.html",
+            {
+                "request": mock_request,
+                "message": expected_message.get("details", "Your verification was successful!"),
+                "email": data.get("email"),
+                "success": True if expected_message.get("status") == "success" else False,
+            },
+        ).body.decode("utf-8")
+
+        response = verify_code(token=fetched_data, db=db_session, request=mock_request)
+
+        mock_decode_email_code_token.assert_called_once_with(fetched_data)
+
+        assert response.body.decode("utf-8").strip() == expected_output.strip()
         
-    #     assert expected_error == error_response 
-
-
+        
+    @pytest.mark.parametrize("expected_exception, expiration_time, data", [
+    ({'message': 'An unexpected error occurred: Signature has expired.', 'details': None}, 
+     datetime.now() - timedelta(hours=1), 
+     {"email": "test@example.com", "code": 123456}
+     ),
+    
+    ({'message': 'Invalid token', 'details': None}, 
+     "2024-11-25 13:55:11.905361", 
+     {"email": "test@example.com", "code": 123456}
+     ),
+    
+    
+    ])
+    
+    def test_verify_code_exceptions(self, mocker: MockerFixture, mock_db_session, expected_exception, expiration_time, data, mock_request):
+        
+        db_session, _ = mock_db_session
+        mocker.patch("app.routers.auth.oauth2.decode_email_code_token", return_value={"status": "error", "message": expected_exception.get("message")})
+        
+        data["exp"] = expiration_time
+        fetched_data = jwt.encode(data, settings.secret_key, settings.algorithm)
+        
+        expected_error = {
+            "status": "error",
+            "message": expected_exception.get("message"),
+            "data": {
+                "type": "VerifyCode",
+                "message": expected_exception.get("message"),
+                "details": None
+            },
+            "meta": {
+                "request_id": mock_request.headers.get("request-id"),
+                "client": mock_request.headers.get("client-type")
+            }
+        }
+        
+        if expected_exception['message'] == "Invalid token":
+            fetched_data = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyQGV4YW1wbGUuY29tIiwiZXhwIjoxNzMyNTQzMzAwLCJpYXQiOjE3MzI1Mzk3MDB9.RgxOUQi5EHhywkNueI96_1IRM70F4T-uSLJRmjlM6Go"
+    
+        with pytest.raises(HTTPException) as exception:
+            verify_code(fetched_data, db_session)
+        
+        error_output = custom_http_exception_handler(mock_request, exception.value)
+        error_body = error_output.body.decode("utf-8")
+        error_response = json.loads(error_body)
+        
+        assert expected_error == error_response
+        
+        
     def test_refresh_code_succeed(self, mocker: MockerFixture, mock_db_session, mock_request):
         """ Refreshing code test success """
 
-        db_session, user= mock_db_session
+        db_session, user = mock_db_session
         
         mock_value = {"status": "success", "new_code": user.code, "user": user}
+        mocker.patch("app.routers.auth.utils.is_code_expired", return_value=False)
         mocker.patch("app.routers.auth.email_utils.resend_email", return_value=mock_value)
         
         expected_output = schemas.SuccessResponse(
@@ -325,34 +381,29 @@ class TestAuth:
         )
 
         response = refresh_code(db_session, mock_request, mock_request)
+        print(response)
         
         assert response == expected_output
             
-    @pytest.mark.parametrize("resend_email_response, user, message", [
-        ({"status": "error", "message": "Code not found"}, 
-         models.Users(
-            id=1, 
-            email="test@example.com", 
-            password="hashed_password", 
-            full_name="Test Example", 
-            username="texample",
-            code=123456,
-            is_validated=True
-            ), "Code not found"),
+            
+    @pytest.mark.parametrize("message, mock_is_code_expired", [
+        ("Code not found", False), 
         
-        ({"status": "success", "message": 123456}, None, "User not found"),
+        ("User not found", False),
         
+        ("Previous requested code is still active", True)
         ])
     
-    @pytest.mark.skipif
-    def test_refresh_code_exceptions(self, mocker: MockerFixture, mock_db_session, resend_email_response, user, mock_request, message):
+    def test_refresh_code_exceptions(self, mocker: MockerFixture, mock_db_session, mock_request, message, mock_is_code_expired):
         """ Refreshing code test including success and failures """
 
-        db_session, _ = mock_db_session
+        db_session, user = mock_db_session
         
-        fetched_data = schemas.CodeValidationInput(code=123456)
-        mocker.patch("app.routers.auth.email_utils.resend_email", return_value=resend_email_response)
-        db_session.query().filter().first.return_value = user
+        if message == "User not found":
+            db_session.query().filter().first.return_value = None
+        fetched_data = schemas.CodeValidationInput(code=123456, email=user.email)
+        mocker.patch("app.routers.auth.utils.is_code_expired", return_value=mock_is_code_expired)
+        mocker.patch("app.routers.auth.email_utils.resend_email", return_value={"status": "error", "message": message})
 
         expected_error = {
                 "status": "error",
@@ -378,10 +429,8 @@ class TestAuth:
         print(expected_error)
         print(error_response)
         
-        assert expected_error == error_response
+        assert error_response == expected_error
         
-    
-    
     def test_password_recovery_succeed(self, mocker: MockerFixture, mock_db_session, mock_request):
         
         db_session, user= mock_db_session
@@ -407,42 +456,39 @@ class TestAuth:
         assert response == expected_output
     
     
-#     @pytest.mark.parametrize(
-#     "user, mock_value, details",
-#     [
-#         (models.Users(id=1, username="testuser", full_name="Test User", email="testuser@example.com", password="testpassword123"),
-#          {"status": "error", "message": "Failed to connect to the SMTP server"}, "Sending validation email for password recovery code"
-#          ),
-#     ]
-# )
-#     def test_password_recovery_exceptions(self, mocker: MockerFixture, user, mock_value, 
-#                                         details, mock_request):
-#         """ Password recovery test raised exceptions """
-
-#         db_session = mocker.Mock()
-#         db_session.query().filter().first.return_value = user  # noqa: E712
+    @pytest.mark.parametrize(
+    "user, mock_value, details",
+    [
+        (models.Users(id=1, username="testuser", full_name="Test User", email="testuser@example.com", password="testpassword123"),
+         {"status": "error", "message": "Failed to connect to the SMTP server"}, "Sending validation email for password recovery code"
+         ),
+    ]
+)
+    def test_password_recovery_exceptions(self, mocker: MockerFixture, user, mock_value, details, mock_request, mock_db_session):
+        """ Password recovery test raised exceptions """
         
-#         mocker.patch("app.routers.auth.email_utils.send_email", return_value=mock_value)
+        db_session, _ = mock_db_session
+        mocker.patch("app.routers.auth.email_utils.send_email", return_value=mock_value)
         
-#         expected_error = {
-#             "status": "error",
-#             "message": mock_value["message"],
-#             "data": {
-#                 "type": "RecoveryCode",
-#                 "message": mock_value["message"],
-#                 "details": details
-#             },
-#             "meta": {
-#                 "request_id": mock_request.headers.get("request-id", "default_request_id"),
-#                 "client": mock_request.headers.get("client-type", "unknown")
-#             }
-#         }
+        expected_error = {
+            "status": "error",
+            "message": mock_value["message"],
+            "data": {
+                "type": "RecoveryCode",
+                "message": mock_value["message"],
+                "details": details
+            },
+            "meta": {
+                "request_id": mock_request.headers.get("request-id", "default_request_id"),
+                "client": mock_request.headers.get("client-type", "unknown")
+            }
+        }
         
-#         with pytest.raises(HTTPException) as exception_data:
-#             password_recovery(schemas.RecoveryCodeInput(email=user.email), db_session, mock_request)
+        with pytest.raises(HTTPException) as exception_data:
+            password_recovery(schemas.RecoveryCodeInput(email=user.email), db_session, mock_request)
             
-#         error_output = custom_http_exception_handler(mock_request, exception_data.value)
-#         error_body = error_output.body.decode("utf-8")
-#         error_response = json.loads(error_body)
+        error_output = custom_http_exception_handler(mock_request, exception_data.value)
+        error_body = error_output.body.decode("utf-8")
+        error_response = json.loads(error_body)
 
-#         assert expected_error == error_response
+        assert expected_error == error_response

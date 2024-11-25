@@ -4,14 +4,16 @@ from psycopg2.extras import RealDictCursor
 import time
 from app.config import settings
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import users, auth
+from app.routers import users, auth, posts, legal
 import firebase_admin
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from app.exception_handlers import custom_http_exception_handler
 from fastapi.exceptions import HTTPException
+from geopy.geocoders import Nominatim
 
 app = FastAPI()
+client = Nominatim(user_agent=settings.user_agent)
 
 app.mount("/static", StaticFiles(directory="app/templates"), name="static")
 templates = Jinja2Templates(directory="app/templates")
@@ -19,8 +21,8 @@ templates = Jinja2Templates(directory="app/templates")
 firebase_admin.initialize_app()
 print(f"Firebase project '{firebase_admin.get_app().project_id}' initialized")
 
+#CORS handling
 origins = ["http://www.google.com", settings.domain]
-#Handle CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -46,7 +48,7 @@ while True:
 
 
 #Include here all the router scripts
-# app.include_router(products.router)
-# app.include_router(users.router)
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(posts.router)
+app.include_router(legal.router)

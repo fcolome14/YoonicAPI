@@ -10,7 +10,6 @@ from app.utils import email_utils, utils
 import app.oauth2 as oauth2
 from datetime import datetime, timedelta
 import pytz
-from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 router = APIRouter(prefix="/auth", tags=['Authentication'])
@@ -149,11 +148,11 @@ def register_user(user_credentials: schemas.RegisterInput, db: Session = Depends
                                                         message="Unverified account",
                                                         details=f"An account with '{user_credentials.email}' or '{user_credentials.username}' exists but is not verified yet").model_dump())
     
-    if utils.is_username_taken(db, user_credentials.username):
+    if utils.is_username_email_taken(db=db, username=user_credentials.username, email=user_credentials.email):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, 
                              detail=schemas.ErrorDetails(type="Register",
-                                                        message="Username exists",
-                                                        details=f"Username '{user_credentials.username}' is already taken").model_dump())
+                                                        message="Username or Email already exists",
+                                                        details=f"Username '{user_credentials.username}' or '{user_credentials.email}' is already taken").model_dump())
     
     password_test = utils.is_password_strong(user_credentials.password)
     if not password_test:
@@ -175,7 +174,7 @@ def register_user(user_credentials: schemas.RegisterInput, db: Session = Depends
     new_user = models.Users(
         **user_credentials.model_dump(), 
         code=code_response.get("message"),
-        code_expiration=datetime.now(utc) + timedelta(minutes=settings.email_code_expire_minutes),
+        code_expiration=datetime.utcnow().replace(tzinfo=pytz.utc) + timedelta(minutes=settings.email_code_expire_minutes),
         is_validated=False
     )
     
@@ -195,13 +194,17 @@ def register_user(user_credentials: schemas.RegisterInput, db: Session = Depends
  
  
 @router.get('/verify-code', status_code=status.HTTP_200_OK)
-def verify_code(
-    code: int,
-    email: str,
-    db: Session = Depends(get_db),
-    request: Request = None,
-):
-    # Validate the code using your utility function
+def verify_code(token: str, db: Session = Depends(get_db), request: Request = None):
+    
+    decoded_token = oauth2.decode_email_code_token(token)
+    if decoded_token.get("status") == "error":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, 
+                             detail=schemas.ErrorDetails(type="VerifyCode",
+                                                        message=decoded_token.get("message"),
+                                                        details=None).model_dump())
+    email = decoded_token.get("email")
+    code = decoded_token.get("code")
+        
     response = utils.is_code_valid(db, code, email)
     if response.get("status") == "error":
         message = response.get("details", "An error occurred during verification.")
@@ -210,11 +213,11 @@ def verify_code(
             {
                 "request": request,
                 "message": message,
+                "email": None,
                 "success": False,
             },
         )
     
-    # Check if user exists with the given code
     user_verified = db.query(models.Users).filter(models.Users.code == code).first()
     if not user_verified:
         message = "The user associated with this code was not found."
@@ -223,11 +226,11 @@ def verify_code(
             {
                 "request": request,
                 "message": message,
+                "email": None,
                 "success": False,
             },
         )
-
-    # Proceed with verification
+        
     user_verified.is_validated = True
     user_verified.code = None
     user_verified.code_expiration = None
@@ -241,6 +244,7 @@ def verify_code(
         {
             "request": request,
             "message": message,
+            "email": settings.email,
             "success": True,
         },
     )
@@ -248,6 +252,16 @@ def verify_code(
  
 @router.post('/refresh-code', response_model=schemas.SuccessResponse, status_code=status.HTTP_200_OK)
 def refresh_code(email_refresh: schemas.CodeValidationInput, db: Session = Depends(get_db), request: Request = None):
+    
+    if utils.is_code_expired(db=db, email=email_refresh.email, code=email_refresh.code):
+        raise HTTPException(
+            status_code=status.HTTP_406_NOT_ACCEPTABLE,
+            detail=schemas.ErrorDetails(
+                type="RefreshCode",
+                message="Previous requested code is still active",
+                details=None
+            ).model_dump()
+        )
     
     code_response = email_utils.resend_email(db, email_refresh.code)
     
@@ -325,27 +339,33 @@ def password_recovery(user_credentials: schemas.RecoveryCodeInput, db: Session =
     )
 
 
-@router.post('/test', status_code=status.HTTP_200_OK, response_model=schemas.SuccessResponse)
-def test(email_refresh: schemas.CodeValidationInput, db: Session = Depends(get_db), user_id: int = Depends(oauth2.get_user_session)):
+# @router.post('/test', status_code=status.HTTP_200_OK, response_model=schemas.SuccessResponse)
+# def test(db: Session = Depends(get_db), user_id: int = Depends(oauth2.get_user_session)):
     
-    user = db.query(models.Users).filter(and_(
-        models.Users.is_validated == True,  # noqa: E712
-        models.Users.id == user_id
-    )).first()
-    print(user)
+#     print("Come here")
     
-    if not user:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-                             detail=schemas.ErrorDetails(type="test",
-                                                        message="test",
-                                                        details="test").model_dump())
+#     user = db.query(models.Users).filter(and_(
+#         models.Users.id == user_id
+#     )).first()
+    
+#     print(user)
+    
+#     if not user:
+#         raise HTTPException(
+#             status_code=status.HTTP_404_NOT_FOUND,
+#             detail=schemas.ErrorDetails(
+#                 type="Test",
+#                 message="User not found",
+#                 details=None
+#             ).model_dump()
+#         )
 
-    return schemas.SuccessResponse(
-        status="success",
-        message="Test",
-        data={},
-        meta={
-            "request_id": None,
-            "client": None,
-        }
-    )
+#     return schemas.SuccessResponse(
+#         status="success",
+#         message="Test",
+#         data={},
+#         meta={
+#             "request_id": None,
+#             "client": None,
+#         }
+#     )

@@ -2,15 +2,13 @@ from sqlalchemy.orm import Session
 import app.models as models
 from .utils import generate_code
 from app.config import settings
-from email_validator import validate_email
 from sqlalchemy import and_
 import smtplib
 import os
-from typing import Union
 from string import Template
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from urllib.parse import quote_plus
+from app.oauth2 import create_email_code_token
 
 VERIFY_CODE_ROUTE = "/auth/verify-code"
 
@@ -30,17 +28,6 @@ def is_email_taken(db: Session, email: str) -> models.Users | None:
     return db.query(models.Users).filter(and_(models.Users.email == email, models.Users.is_validated == True)).first()  # noqa: E712
 
 
-def is_email_valid(email: str) -> str:
-    """Validate email format
-
-    Args:
-        email (str): Email
-
-    Returns:
-        str: Email or Exceptions
-    """
-    return validate_email(email).email
-
 def send_email(db: Session, email: str, template: int = 0):
     """Send email with a code
 
@@ -53,7 +40,8 @@ def send_email(db: Session, email: str, template: int = 0):
         Union[dict, int]: Error details as a dictionary or the validation code on success.
     """
     
-    validation_code = generate_code(db)
+    verification_code = generate_code(db)
+    verification_token = create_email_code_token(data={"email": email, "code": verification_code})
     
     match template:
         case 0:
@@ -71,7 +59,7 @@ def send_email(db: Session, email: str, template: int = 0):
 
     verification_url = f"{settings.domain}{VERIFY_CODE_ROUTE}"
     template = Template(template_content)
-    html_content = template.substitute(verification_code=validation_code, verification_url=verification_url, email=email)
+    html_content = template.substitute(verification_token=verification_token, verification_url=verification_url, verification_code=verification_code)
 
     msg = MIMEMultipart()
     msg['From'] = settings.email
@@ -86,7 +74,7 @@ def send_email(db: Session, email: str, template: int = 0):
         server.sendmail(settings.email, email, msg.as_string())
         server.quit()
 
-        return {"status": "success", "message": validation_code}
+        return {"status": "success", "message": verification_code}
 
     except smtplib.SMTPException as e:
         return {"status": "error", "message": f"SMTP error occurred: {str(e)}"}

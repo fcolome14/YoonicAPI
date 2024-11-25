@@ -34,6 +34,7 @@ def get_users(username: str, db: Session=Depends(get_db)):
     
     return users
 
+
 @router.get("/userid")
 async def get_userid(user: Annotated[dict, Depends(get_firebase_user_from_token)]):
     """gets the firebase connected user"""

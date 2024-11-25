@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     domain: str
     email_code_expire_minutes: int
     google_application_credentials: str
+    nominatim_base_url: str
+    user_agent: str
     
     class Config:
         env_file = os.path.join(Path(__file__).resolve().parent.parent, ".env")
@@ -53,6 +55,8 @@ class FirebaseSettings(BaseSettings):
     domain: str
     email_code_expire_minutes: int
     google_application_credentials: str
+    nominatim_base_url: str
+    user_agent: str
 
     class Config:
         env_file = os.path.join(Path(__file__).resolve().parent.parent, ".env")

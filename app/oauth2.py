@@ -9,6 +9,7 @@ from functools import wraps
 from sqlalchemy.orm import Session
 import app.models as models
 from app.database.connection import get_db 
+from jwt import ExpiredSignatureError, InvalidTokenError, DecodeError
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl='login')
 
@@ -41,6 +42,13 @@ def create_refresh_token(data: dict):
     return encoded_jwt
 
 
+def create_email_code_token(data: dict):
+    expire = datetime.utcnow() + timedelta(minutes=data.get("expire_minutes", settings.email_code_expire_minutes))
+    data["exp"] = expire
+    encoded_jwt = jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+
 def decode_access_token(token: str, credentials_exception, db: Session):
     """Decodes the access token and checks for blacklisting."""
     if is_token_blacklisted(db, token):
@@ -57,15 +65,60 @@ def decode_access_token(token: str, credentials_exception, db: Session):
 
     return token_data.id
 
+def decode_email_code_token(token: str):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+    except ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=schemas.ErrorDetails(
+                type="TokenAuth",
+                message="Token has expired",
+                details=None
+            ).model_dump()
+        )
+    except InvalidTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=schemas.ErrorDetails(
+                type="TokenAuth",
+                message="Invalid token",
+                details=None
+            ).model_dump()
+        )
+    except DecodeError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=schemas.ErrorDetails(
+                type="TokenAuth",
+                message="Error decoding token",
+                details=None
+            ).model_dump()
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=schemas.ErrorDetails(
+                type="TokenAuth",
+                message=f"An unexpected error occurred: {str(e)}",
+                details=None
+            ).model_dump()
+        )
 
-def get_user_session(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+
+
+def get_user_session(token: str = Depends(oauth2_scheme)):
     """Validates and returns the user session from a token."""
     credentials_exception = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                              headers={"WWW-Authenticate": "Bearer"},
                              detail=schemas.ErrorDetails(type="Oauth2",
                                                         message="Could not validate access token",
                                                         details=None).model_dump())
-    return decode_access_token(token, credentials_exception, db)
+    payload = decode_access_token(token)
+    if not payload:
+        raise credentials_exception
+    return payload
 
 
 def is_token_blacklisted(db: Session, token: str) -> bool:
@@ -92,10 +145,8 @@ def invalidate_token(token: schemas.TokenSchema, db: Session):
         headers={"WWW-Authenticate": "Bearer"},
     )
     
-    # Decode and validate the token
     decode_access_token(token.access_token, credentials_exception, db)
     
-    # Query the database for the token
     token_entry = db.query(models.TokenTable).filter(
         and_(
             models.TokenTable.access_token == token.access_token,

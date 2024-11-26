@@ -49,8 +49,19 @@ def create_email_code_token(data: dict):
     return encoded_jwt
 
 
-def decode_access_token(token: str, credentials_exception, db: Session):
+def decode_access_token(token: str, db: Session):
     """Decodes the access token and checks for blacklisting."""
+    
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        headers={"WWW-Authenticate": "Bearer"},
+        detail=schemas.ErrorDetails(
+            type="Logout",
+            message="Could not validate credentials",
+            details=None
+        ).model_dump()
+    )
+    
     if is_token_blacklisted(db, token):
         raise credentials_exception
 

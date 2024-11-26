@@ -8,12 +8,18 @@ def custom_http_exception_handler(request: Request, exc: HTTPException):
     
     exc_detail = exc.detail
     
-    error_details = ErrorDetails(
-        type=exc_detail.get("type"),
-        message=exc_detail.get("message"), 
-        details=exc_detail.get("details")
+    if isinstance(exc_detail, str):
+        error_details = ErrorDetails(
+        type="Exception",
+        message=exc_detail, 
+        details=None
     )
-    #TODO: REMOVE MESSAGE
+    else:
+        error_details = ErrorDetails(
+            type=exc_detail.get("type"),
+            message=exc_detail.get("message"), 
+            details=exc_detail.get("details")
+        )
     
     meta_data = MetaData(
         request_id=request.headers.get("request-id", "default_request_id"),

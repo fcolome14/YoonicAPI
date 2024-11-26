@@ -95,18 +95,7 @@ def logout(token: str = Depends(oauth2.oauth2_scheme), db: Session = Depends(get
     Returns:
         dict: Success or error message.
     """
-    
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        headers={"WWW-Authenticate": "Bearer"},
-        detail=schemas.ErrorDetails(
-            type="Logout",
-            message="Could not validate credentials",
-            details=None
-        ).model_dump()
-    )
-    
-    oauth2.decode_access_token(token, credentials_exception, db)
+    oauth2.decode_access_token(token, db)
     
     token_entry = db.query(models.TokenTable).filter(
         and_(
@@ -339,33 +328,31 @@ def password_recovery(user_credentials: schemas.RecoveryCodeInput, db: Session =
     )
 
 
-# @router.post('/test', status_code=status.HTTP_200_OK, response_model=schemas.SuccessResponse)
-# def test(db: Session = Depends(get_db), user_id: int = Depends(oauth2.get_user_session)):
+@router.post('/test', status_code=status.HTTP_200_OK, response_model=schemas.SuccessResponse)
+def test(db: Session = Depends(get_db), user_id: int = Depends(oauth2.get_user_session)):
     
-#     print("Come here")
+    user = db.query(models.Users).filter(and_(
+        models.Users.id == user_id
+    )).first()
     
-#     user = db.query(models.Users).filter(and_(
-#         models.Users.id == user_id
-#     )).first()
+    print(user)
     
-#     print(user)
-    
-#     if not user:
-#         raise HTTPException(
-#             status_code=status.HTTP_404_NOT_FOUND,
-#             detail=schemas.ErrorDetails(
-#                 type="Test",
-#                 message="User not found",
-#                 details=None
-#             ).model_dump()
-#         )
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=schemas.ErrorDetails(
+                type="Test",
+                message="User not found",
+                details=None
+            ).model_dump()
+        )
 
-#     return schemas.SuccessResponse(
-#         status="success",
-#         message="Test",
-#         data={},
-#         meta={
-#             "request_id": None,
-#             "client": None,
-#         }
-#     )
+    return schemas.SuccessResponse(
+        status="success",
+        message="Test",
+        data={},
+        meta={
+            "request_id": None,
+            "client": None,
+        }
+    )

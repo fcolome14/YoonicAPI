@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Terms and Conditions - Yoonic</title>
   <style>
+    /* Base Styles */
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       margin: 0;
@@ -12,28 +13,6 @@
       color: #333;
       background: url('/static/assets/images/bg_surf.jpg') no-repeat center center fixed;
       background-size: cover;
-    }
-
-    .social-media {
-      position: absolute;
-      top: 10px;
-      right: 20px;
-    }
-  
-    .social-media a {
-      margin: 0 10px;
-      display: inline-block;
-    }
-  
-    .social-media img {
-      width: 24px;
-      height: 24px;
-      vertical-align: middle;
-      transition: transform 0.3s ease;
-    }
-  
-    .social-media img:hover {
-      transform: scale(1.2);
     }
 
     header {
@@ -47,6 +26,28 @@
     header h1 {
       margin: 0;
       font-size: 2.5rem;
+    }
+
+    .social-media {
+      position: absolute;
+      top: 10px;
+      right: 20px;
+    }
+
+    .social-media a {
+      margin: 0 10px;
+      display: inline-block;
+    }
+
+    .social-media img {
+      width: 24px;
+      height: 24px;
+      vertical-align: middle;
+      transition: transform 0.3s ease;
+    }
+
+    .social-media img:hover {
+      transform: scale(1.2);
     }
 
     .content {
@@ -108,8 +109,70 @@
     footer a:hover {
       text-decoration: underline;
     }
+
+    /* Media Queries for Responsiveness */
+    @media screen and (max-width: 768px) {
+      header h1 {
+        font-size: 2rem;
+      }
+
+      .content {
+        margin: 20px;
+        padding: 15px;
+      }
+
+      .social-media {
+        position: static;
+        text-align: center;
+        margin-top: 10px;
+      }
+
+      .social-media a {
+        margin: 0 5px;
+      }
+
+      .social-media img {
+        width: 30px;
+        height: 30px;
+      }
+
+      h2 {
+        font-size: 1.5rem;
+      }
+    }
+
+    @media screen and (max-width: 480px) {
+      body {
+        font-size: 14px;
+      }
+
+      header h1 {
+        font-size: 1.5rem;
+      }
+
+      .content {
+        margin: 10px;
+        padding: 10px;
+      }
+
+      .section p {
+        font-size: 0.95rem; /* Smaller font size for mobile */
+      }
+
+      .social-media a {
+        margin: 0 5px;
+      }
+
+      footer {
+        font-size: 0.8rem;
+      }
+
+      .section ul {
+        padding-left: 15px;
+      }
+    }
+
   </style>
-  <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
 </head>
 <body>
 
@@ -129,11 +192,8 @@
 </header>
 
 <div class="content">
-
   <section class="section">
-    <p>YOONIC, S.L. (hereinafter, “YOONIC SL”) is a Spanish company, with address for contact purposes at Albasanz, 71, 3-2 08034 Madrid and Tax Identification Number (N.I.F) B-0345353, duly registered with the Commercial Registry of Barcelona.
-      YOONIC SL is the owner of all Intellectual and Industrial Property rights (as such term is defined below) or any other rights over the application “Yoonic” (hereinafter, the “Application” or the “App”).
-      Use of the App is subject to the following terms and conditions set forth herein (the “General Terms and Conditions”).</p>
+    <p>YOONIC, S.L. (hereinafter, “YOONIC SL”) is a Spanish company, with address for contact purposes at Albasanz, 71, 3-2 08034 Madrid and Tax Identification Number (N.I.F) B-0345353, duly registered with the Commercial Registry of Barcelona. YOONIC SL is the owner of all Intellectual and Industrial Property rights (as such term is defined below) or any other rights over the application “Yoonic” (hereinafter, the “Application” or the “App”). Use of the App is subject to the following terms and conditions set forth herein (the “General Terms and Conditions”).</p>
   </section>
 
   <section class="section">

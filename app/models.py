@@ -1,5 +1,5 @@
 from app.database import Base
-from sqlalchemy import Column, String, Integer, Boolean, ForeignKey
+from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, DOUBLE_PRECISION
 from sqlalchemy.sql.expression import null, text
 from sqlalchemy.types import TIMESTAMP
 from sqlalchemy.orm import relationship
@@ -33,7 +33,7 @@ class TokenTable(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text('now()'))
     
-    user = relationship("Users", backref="tokens")
+    user = relationship("Users", backref="tokentable")
     
 class Categories(Base):
     """ Categories table model """
@@ -42,10 +42,10 @@ class Categories(Base):
     
     id = Column(Integer, primary_key=True, nullable=False, autoincrement=True)
     code = Column(String, nullable=False)
-    full_name = Column(String, nullable=False)
+    name = Column(String, nullable=False)
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text('now()'))
 
-class Categories(Base):
+class Subscriptions(Base):
     """ Subscriptions table model """
     
     __tablename__ = "subs"
@@ -61,11 +61,23 @@ class Events(Base):
     
     __tablename__ = "events"
     
-    id = Column(Integer, primary_key=True, nullable=False, autoincrement=True)
-    name = Column(String, nullable=False)
-    price = Column(Integer, nullable=False)
-    id_sale = Column(Boolean, server_default='False')
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    address = Column(String, nullable=False)
+    coordinates = Column(String, nullable=False)
+    img = Column(String, nullable=True)
+    img2 = Column(String, nullable=True)
+    start = Column(TIMESTAMP(timezone=False), nullable=False)
+    end = Column(TIMESTAMP(timezone=False), nullable=False)
+    cost = Column(DOUBLE_PRECISION, nullable=True, default=0.00)
+    capacity = Column(Integer, nullable=True)
+    # tags = Column(Integer, nullable=True)
+    currency = Column(String, nullable=True)
+    isPublic = Column(Boolean, nullable=False, default=True)
+    owner_id = Column(Integer, ForeignKey("users.id"))
+    category = Column(Integer, ForeignKey("cat.id"))
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text('now()'))
-    #user_id = Column(Integer, ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
     
-    #user = relationship("Users") #Its referencing the "Users" class sqlalchemy
+    user = relationship("Users", backref="events")
+    cat = relationship("Categories", backref="events")

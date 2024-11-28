@@ -7,7 +7,7 @@ USER_AGENT = settings.user_agent
 
 async def fetch_geocode_data(address: str):
     """
-    Fetch geocode data (latitude and longitude) for a given address.
+    Fetch geocode data from address to coordinates.
     """
     params = {
         "q": address,
@@ -15,15 +15,23 @@ async def fetch_geocode_data(address: str):
         "addressdetails": 1,
     }
     headers = {"User-Agent": USER_AGENT}
+    
     async with httpx.AsyncClient(headers=headers) as client:
         response = await client.get(f"{NOMINATIM_BASE_URL}/search", params=params)
         if response.status_code == 200:
-            return response.json()
-        raise HTTPException(status_code=response.status_code, detail="Error fetching geocode data")
+            fetched_data = response.json()
+            if not fetched_data:
+                return {"status": "error", "details": "Site not found"}
+            
+            coordinates = f'{fetched_data[0].get("lat")},{fetched_data[0].get("lon")}'
+            address = fetched_data[0].get("display_name")
+            return {"status": "success", "point": coordinates, "address": address}
+        
+        return {"status": "error", "details": "Error while fetching geocode data"}
 
 async def fetch_reverse_geocode_data(lat: float, lon: float):
     """
-    Fetch reverse geocode data (address) for a given latitude and longitude.
+    Fetch geocode data from coordinates to address.
     """
     params = {
         "lat": lat,
@@ -35,5 +43,12 @@ async def fetch_reverse_geocode_data(lat: float, lon: float):
     async with httpx.AsyncClient(headers=headers) as client:
         response = await client.get(f"{NOMINATIM_BASE_URL}/reverse", params=params)
         if response.status_code == 200:
-            return response.json()
-        raise HTTPException(status_code=response.status_code, detail="Error fetching reverse geocode data")
+            fetched_data = response.json()
+            if not fetched_data:
+                return {"status": "error", "details": "Site not found"}
+            
+            coordinates = f'{fetched_data.get("lat")},{fetched_data.get("lon")}'
+            address = fetched_data.get("display_name")
+            return {"status": "success", "point": coordinates, "address": address}
+        
+        return {"status": "error", "details": "Error while fetching geocode data"}

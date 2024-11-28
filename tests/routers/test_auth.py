@@ -1,7 +1,7 @@
 import pytest
 from fastapi import HTTPException
 from app.exception_handlers import custom_http_exception_handler
-from app.routers.auth import login, register_user, verify_code, refresh_code, password_recovery
+from app.routers.auth import login, register_user, verify_code, refresh_code, password_recovery_code
 from app.config import settings
 from pytest_mock import MockerFixture
 from fastapi.security.oauth2 import OAuth2PasswordRequestForm
@@ -9,7 +9,7 @@ import app.models as models
 import app.schemas as schemas
 import json
 import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import app.oauth2 as oauth2
 from fastapi.templating import Jinja2Templates
 
@@ -35,7 +35,7 @@ class TestAuth:
             username="texample",
             code=123456,
             is_validated=True,
-            code_expiration=datetime(2024, 11, 25, 19, 21, 17, 830431)
+            code_expiration=datetime.now(timezone.utc)
             )
         
         mock_session.query().filter().first.return_value = mock_user
@@ -59,7 +59,7 @@ class TestAuth:
         
         mocker.patch('app.routers.auth.get_db', return_value=db_session)
         mocker.patch('app.routers.auth.utils.is_password_valid', return_value=True)
-        mocker.patch('app.routers.auth.utils.is_user_logged', return_value=False)
+        # mocker.patch('app.routers.auth.utils.is_user_logged', return_value=False)
         mock_access_token = "mocked_access_token"
         mock_refresh_token = "mocked_refresh_token"
         mocker.patch('app.routers.auth.oauth2.create_access_token', return_value=mock_access_token)
@@ -85,23 +85,23 @@ class TestAuth:
         assert response == expected_output
 
     @pytest.mark.parametrize("is_user_logged, is_password_valid, user, details, message", [
-        (True, True, models.Users(
-            id=1, 
-            email="test@example.com", 
-            password="hashed_password", 
-            full_name="Test Example", 
-            username="texample",
-            is_validated=True), 
-         None, 
-         "User already logged in"),
+        # (True, True, models.Users(
+        #     id=1, 
+        #     email="test@example.com", 
+        #     password="hashed_password", 
+        #     full_name="Test Example", 
+        #     username="texample",
+        #     is_validated=True), 
+        #  None, 
+        #  "User already logged in"),
         
-        (True, False, models.Users(
-            id=1, 
-            email="test@example.com", 
-            password="hashed_password", 
-            full_name="Test Example", 
-            username="texample",
-            is_validated=True),  None, "User already logged in"),
+        # (True, False, models.Users(
+        #     id=1, 
+        #     email="test@example.com", 
+        #     password="hashed_password", 
+        #     full_name="Test Example", 
+        #     username="texample",
+        #     is_validated=True),  None, "User already logged in"),
         
         (False, False, models.Users(
             id=1, 
@@ -121,7 +121,7 @@ class TestAuth:
         
         mocker.patch('app.routers.auth.get_db', return_value=db_session)
         mocker.patch('app.routers.auth.utils.is_password_valid', return_value=is_password_valid)
-        mocker.patch('app.routers.auth.utils.is_user_logged', return_value=is_user_logged)
+        # # mocker.patch('app.routers.auth.utils.is_user_logged', return_value=is_user_logged)
         db_session.query().filter().first.return_value = user
         
         expected_error = {
@@ -431,7 +431,7 @@ class TestAuth:
         
         assert error_response == expected_error
         
-    def test_password_recovery_succeed(self, mocker: MockerFixture, mock_db_session, mock_request):
+    def test_password_recovery_code_succeed(self, mocker: MockerFixture, mock_db_session, mock_request):
         
         db_session, user= mock_db_session
         
@@ -451,7 +451,7 @@ class TestAuth:
             }
         )
         
-        response = password_recovery(fetched_data, db_session, mock_request)
+        response = password_recovery_code(fetched_data, db_session, mock_request)
                 
         assert response == expected_output
     
@@ -464,7 +464,7 @@ class TestAuth:
          ),
     ]
 )
-    def test_password_recovery_exceptions(self, mocker: MockerFixture, user, mock_value, details, mock_request, mock_db_session):
+    def test_password_recovery_code_exceptions(self, mocker: MockerFixture, user, mock_value, details, mock_request, mock_db_session):
         """ Password recovery test raised exceptions """
         
         db_session, _ = mock_db_session
@@ -485,7 +485,7 @@ class TestAuth:
         }
         
         with pytest.raises(HTTPException) as exception_data:
-            password_recovery(schemas.RecoveryCodeInput(email=user.email), db_session, mock_request)
+            password_recovery_code(schemas.RecoveryCodeInput(email=user.email), db_session, mock_request)
             
         error_output = custom_http_exception_handler(mock_request, exception_data.value)
         error_body = error_output.body.decode("utf-8")

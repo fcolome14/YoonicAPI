@@ -41,7 +41,7 @@ async def get_userid(user: Annotated[dict, Depends(get_firebase_user_from_token)
     return {"id": user["uid"]}
 
 
-@router.post("/change_password", status_code=status.HTTP_201_CREATED, response_model=schemas.SuccessResponse)
+@router.put("/change_password", status_code=status.HTTP_201_CREATED, response_model=schemas.SuccessResponse)
 def password_change(user_credentials: OAuth2PasswordRequestForm = Depends(), db: Session=Depends(get_db), request: Request = None):
     
     

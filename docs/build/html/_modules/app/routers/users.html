@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>app.routers.users &#8212; YoonicAPI 0.0.1 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=d1102ebc" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/basic.css?v=686e5160" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/alabaster.css?v=27fed22d" />
+    <script src="../../../_static/documentation_options.js?v=d45e8c67"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+   
+  <link rel="stylesheet" href="../../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for app.routers.users</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span> <span class="nn">fastapi</span> <span class="kn">import</span> <span class="n">Depends</span><span class="p">,</span> <span class="n">APIRouter</span><span class="p">,</span> <span class="n">status</span><span class="p">,</span> <span class="n">HTTPException</span>
+<span class="kn">from</span> <span class="nn">sqlalchemy.orm</span> <span class="kn">import</span> <span class="n">Session</span>
+<span class="kn">from</span> <span class="nn">app.database.connection</span> <span class="kn">import</span> <span class="n">get_db</span>
+<span class="kn">import</span> <span class="nn">app.models</span> <span class="k">as</span> <span class="nn">models</span>
+<span class="kn">from</span> <span class="nn">sqlalchemy</span> <span class="kn">import</span> <span class="n">or_</span><span class="p">,</span> <span class="n">and_</span>
+<span class="kn">import</span> <span class="nn">app.schemas</span> <span class="k">as</span> <span class="nn">schemas</span>
+<span class="kn">from</span> <span class="nn">app.utils</span> <span class="kn">import</span> <span class="n">email_utils</span><span class="p">,</span> <span class="n">utils</span>
+
+<span class="n">router</span> <span class="o">=</span> <span class="n">APIRouter</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s2">&quot;/users&quot;</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;Users&quot;</span><span class="p">])</span>
+
+<div class="viewcode-block" id="create_users">
+<a class="viewcode-back" href="../../../app.routers.html#app.routers.users.create_users">[docs]</a>
+<span class="nd">@router</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">,</span> <span class="n">status_code</span><span class="o">=</span><span class="n">status</span><span class="o">.</span><span class="n">HTTP_201_CREATED</span><span class="p">,</span> <span class="n">response_model</span><span class="o">=</span><span class="n">schemas</span><span class="o">.</span><span class="n">GetUsers</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">create_users</span><span class="p">(</span><span class="n">users</span><span class="p">:</span> <span class="n">schemas</span><span class="o">.</span><span class="n">CreateUsers</span><span class="p">,</span> <span class="n">db</span><span class="p">:</span> <span class="n">Session</span><span class="o">=</span><span class="n">Depends</span><span class="p">(</span><span class="n">get_db</span><span class="p">)):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Create new user</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        users (schemas.CreateUsers): Input schema</span>
+<span class="sd">        db (Session, optional): Database session. Defaults to Depends(get_db).</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        _type_: User data</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    
+    <span class="n">hashed_pwd</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">hash</span><span class="p">(</span><span class="n">users</span><span class="o">.</span><span class="n">password</span><span class="p">)</span>
+    <span class="n">users</span><span class="o">.</span><span class="n">password</span> <span class="o">=</span> <span class="n">hashed_pwd</span>
+    
+    <span class="n">new_user</span> <span class="o">=</span> <span class="n">models</span><span class="o">.</span><span class="n">Users</span><span class="p">(</span><span class="o">**</span><span class="n">users</span><span class="o">.</span><span class="n">model_dump</span><span class="p">())</span>
+    <span class="n">db</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">new_user</span><span class="p">)</span>
+    <span class="n">db</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+    
+    <span class="k">return</span> <span class="n">new_user</span></div>
+
+
+
+<div class="viewcode-block" id="get_users">
+<a class="viewcode-back" href="../../../app.routers.html#app.routers.users.get_users">[docs]</a>
+<span class="nd">@router</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;/</span><span class="si">{username}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">status_code</span><span class="o">=</span><span class="n">status</span><span class="o">.</span><span class="n">HTTP_200_OK</span><span class="p">,</span> <span class="n">response_model</span><span class="o">=</span><span class="n">schemas</span><span class="o">.</span><span class="n">GetUsers</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">get_users</span><span class="p">(</span><span class="n">username</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">db</span><span class="p">:</span> <span class="n">Session</span><span class="o">=</span><span class="n">Depends</span><span class="p">(</span><span class="n">get_db</span><span class="p">)):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get user data</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        username (str): User&#39;s username</span>
+<span class="sd">        db (Session, optional): Database session. Defaults to Depends(get_db).</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        HTTPException: If user not found</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        _type_: User data</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    
+    <span class="n">users</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="n">models</span><span class="o">.</span><span class="n">Users</span><span class="p">)</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">models</span><span class="o">.</span><span class="n">Users</span><span class="o">.</span><span class="n">username</span> <span class="o">==</span> <span class="n">username</span><span class="p">)</span><span class="o">.</span><span class="n">first</span><span class="p">()</span>
+    
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">users</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span><span class="n">status_code</span><span class="o">=</span><span class="n">status</span><span class="o">.</span><span class="n">HTTP_404_NOT_FOUND</span><span class="p">,</span> <span class="n">detail</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;User </span><span class="si">{</span><span class="n">username</span><span class="si">}</span><span class="s2"> not found&quot;</span><span class="p">)</span>
+    
+    <span class="k">return</span> <span class="n">users</span></div>
+
+
+<div class="viewcode-block" id="password_change">
+<a class="viewcode-back" href="../../../app.routers.html#app.routers.users.password_change">[docs]</a>
+<span class="nd">@router</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">&quot;/password_change&quot;</span><span class="p">,</span> <span class="n">status_code</span><span class="o">=</span><span class="n">status</span><span class="o">.</span><span class="n">HTTP_201_CREATED</span><span class="p">,</span> <span class="n">response_model</span><span class="o">=</span><span class="n">schemas</span><span class="o">.</span><span class="n">GetUsers</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">password_change</span><span class="p">(</span><span class="n">users_credentials</span><span class="p">:</span> <span class="n">schemas</span><span class="o">.</span><span class="n">PasswordChange</span><span class="p">,</span> <span class="n">db</span><span class="p">:</span> <span class="n">Session</span><span class="o">=</span><span class="n">Depends</span><span class="p">(</span><span class="n">get_db</span><span class="p">)):</span>
+    
+    <span class="n">user</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="n">models</span><span class="o">.</span><span class="n">Users</span><span class="p">)</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">and_</span><span class="p">(</span><span class="n">models</span><span class="o">.</span><span class="n">Users</span><span class="o">.</span><span class="n">email</span> <span class="o">==</span> <span class="n">users_credentials</span><span class="o">.</span><span class="n">email</span><span class="p">,</span>  
+                                               <span class="n">models</span><span class="o">.</span><span class="n">Users</span><span class="o">.</span><span class="n">is_validated</span> <span class="o">==</span> <span class="kc">True</span><span class="p">))</span><span class="o">.</span><span class="n">first</span><span class="p">()</span> <span class="c1"># noqa: E712</span>
+    
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">user</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span><span class="n">status_code</span><span class="o">=</span><span class="n">status</span><span class="o">.</span><span class="n">HTTP_404_NOT_FOUND</span><span class="p">,</span> <span class="n">detail</span><span class="o">=</span><span class="s2">&quot;Active user not found&quot;</span><span class="p">)</span> 
+    
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">utils</span><span class="o">.</span><span class="n">is_password_valid</span><span class="p">(</span><span class="n">users_credentials</span><span class="o">.</span><span class="n">password</span><span class="p">,</span> <span class="n">user</span><span class="o">.</span><span class="n">password</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span><span class="n">status_code</span><span class="o">=</span><span class="n">status</span><span class="o">.</span><span class="n">HTTP_403_FORBIDDEN</span><span class="p">,</span> <span class="n">detail</span><span class="o">=</span><span class="s2">&quot;Invalid Credentials&quot;</span><span class="p">)</span> 
+    
+    <span class="n">password_test</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">is_password_strong</span><span class="p">(</span><span class="n">users_credentials</span><span class="o">.</span><span class="n">new_password</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">password_test</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span><span class="n">status_code</span><span class="o">=</span><span class="n">status</span><span class="o">.</span><span class="n">HTTP_409_CONFLICT</span><span class="p">,</span> 
+                             <span class="n">detail</span><span class="o">=</span><span class="n">schemas</span><span class="o">.</span><span class="n">DetailError</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="s2">&quot;WeakPassword&quot;</span><span class="p">,</span>
+                                                        <span class="n">message</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Weak password: </span><span class="si">{</span><span class="n">password_test</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">model_dump</span><span class="p">())</span>
+        
+    <span class="k">if</span> <span class="n">utils</span><span class="o">.</span><span class="n">is_user_valid</span><span class="p">(</span><span class="n">db</span><span class="p">,</span> <span class="n">users_credentials</span><span class="o">.</span><span class="n">email</span><span class="p">,</span> <span class="n">users_credentials</span><span class="o">.</span><span class="n">password</span><span class="p">):</span>
+        <span class="n">user</span><span class="o">.</span><span class="n">password</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">hash_password</span><span class="p">(</span><span class="n">users_credentials</span><span class="o">.</span><span class="n">new_password</span><span class="p">)</span>
+        <span class="n">db</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+        <span class="n">db</span><span class="o">.</span><span class="n">refresh</span><span class="p">(</span><span class="n">user</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">user</span>
+    
+    <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span><span class="n">status_code</span><span class="o">=</span><span class="n">status</span><span class="o">.</span><span class="n">HTTP_401_UNAUTHORIZED</span><span class="p">,</span> <span class="n">detail</span><span class="o">=</span><span class="s2">&quot;Invalid credentials&quot;</span><span class="p">)</span></div>
+
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../../index.html">YoonicAPI</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../../index.html">Documentation overview</a><ul>
+  <li><a href="../../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2024, Ferran Colome.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.1.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

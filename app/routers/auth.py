@@ -8,7 +8,7 @@ import app.schemas as schemas
 from app.config import settings
 from app.utils import email_utils, utils
 import app.oauth2 as oauth2
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import pytz
 from fastapi.templating import Jinja2Templates
 
@@ -41,11 +41,11 @@ def login(user_credentials: OAuth2PasswordRequestForm = Depends(), db: Session =
                                                         message="Invalid Credentials",
                                                         details="User not found").model_dump())
         
-    if utils.is_user_logged(db, user_credentials.username):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, 
-                             detail=schemas.ErrorDetails(type="Auth",
-                                                        message="User already logged in",
-                                                        details=None).model_dump())
+    # if utils.is_user_logged(db, user_credentials.username):
+    #     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, 
+    #                          detail=schemas.ErrorDetails(type="Auth",
+    #                                                     message="User already logged in",
+    #                                                     details=None).model_dump())
     
     if not utils.is_password_valid(user_credentials.password, user.password):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, 
@@ -84,18 +84,22 @@ def login(user_credentials: OAuth2PasswordRequestForm = Depends(), db: Session =
 
 
 @router.post('/logout', status_code=status.HTTP_200_OK, response_model=schemas.SuccessResponse)
-def logout(token: str = Depends(oauth2.oauth2_scheme), db: Session = Depends(get_db), request: Request = None):
-    """
-    Logout endpoint to invalidate an access token.
-    
+def logout(token: str = Depends(oauth2.oauth2_scheme), db: Session = Depends(get_db), 
+           _: int = Depends(oauth2.get_user_session), request: Request = None) -> schemas.SuccessResponse:
+    """Logout endpoint to invalidate an access token
+
     Args:
-        token (str): Access token from the Authorization header.
-        db (Session): Database session.
-        
+        token (str, optional): Access token from the Authorization header. Defaults to Depends(oauth2.oauth2_scheme).
+        db (Session, optional): Database session. Defaults to Depends(get_db).
+        _ (int, optional): User Id. Defaults to Depends(oauth2.get_user_session).
+        request (Request, optional): Header. Defaults to None.
+
+    Raises:
+        HTTPException: When an error occurs
+
     Returns:
-        dict: Success or error message.
+        schemas.SuccessResponse: Succesful JSON
     """
-    oauth2.decode_access_token(token, db)
     
     token_entry = db.query(models.TokenTable).filter(
         and_(
@@ -163,7 +167,7 @@ def register_user(user_credentials: schemas.RegisterInput, db: Session = Depends
     new_user = models.Users(
         **user_credentials.model_dump(), 
         code=code_response.get("message"),
-        code_expiration=datetime.utcnow().replace(tzinfo=pytz.utc) + timedelta(minutes=settings.email_code_expire_minutes),
+        code_expiration=datetime.now(timezone.utc).replace(tzinfo=pytz.utc) + timedelta(minutes=settings.email_code_expire_minutes),
         is_validated=False
     )
     
@@ -183,7 +187,20 @@ def register_user(user_credentials: schemas.RegisterInput, db: Session = Depends
  
  
 @router.get('/verify-code', status_code=status.HTTP_200_OK)
-def verify_code(token: str, db: Session = Depends(get_db), request: Request = None):
+def verify_code(token: str, db: Session = Depends(get_db), request: Request = None) -> schemas.SuccessResponse:
+    """Validation of provided code
+
+    Args:
+        token (str): _description_
+        db (Session, optional): _description_. Defaults to Depends(get_db).
+        request (Request, optional): _description_. Defaults to None.
+
+    Raises:
+        HTTPException: _description_
+
+    Returns:
+        schemas.SuccessResponse: _description_
+    """
     
     decoded_token = oauth2.decode_email_code_token(token)
     if decoded_token.get("status") == "error":
@@ -240,7 +257,22 @@ def verify_code(token: str, db: Session = Depends(get_db), request: Request = No
  
  
 @router.post('/refresh-code', response_model=schemas.SuccessResponse, status_code=status.HTTP_200_OK)
-def refresh_code(email_refresh: schemas.CodeValidationInput, db: Session = Depends(get_db), request: Request = None):
+def refresh_code(email_refresh: schemas.CodeValidationInput, db: Session = Depends(get_db), request: Request = None) -> schemas.SuccessResponse:
+    """Refresh the validation code by sending a new email
+
+    Args:
+        email_refresh (schemas.CodeValidationInput): _description_
+        db (Session, optional): _description_. Defaults to Depends(get_db).
+        request (Request, optional): _description_. Defaults to None.
+
+    Raises:
+        HTTPException: _description_
+        HTTPException: _description_
+        HTTPException: _description_
+
+    Returns:
+        schemas.SuccessResponse: _description_
+    """
     
     if utils.is_code_expired(db=db, email=email_refresh.email, code=email_refresh.code):
         raise HTTPException(
@@ -294,7 +326,21 @@ def refresh_code(email_refresh: schemas.CodeValidationInput, db: Session = Depen
 
 
 @router.post('/recovery-code', response_model=schemas.SuccessResponse, status_code=status.HTTP_200_OK)
-def password_recovery(user_credentials: schemas.RecoveryCodeInput, db: Session = Depends(get_db), request: Request = None):
+def password_recovery_code(user_credentials: schemas.RecoveryCodeInput, db: Session = Depends(get_db), request: Request = None) -> schemas.SuccessResponse:
+    """Send a new email validation code using a 'recovery' HTML template
+
+    Args:
+        user_credentials (schemas.RecoveryCodeInput): _description_
+        db (Session, optional): _description_. Defaults to Depends(get_db).
+        request (Request, optional): _description_. Defaults to None.
+
+    Raises:
+        HTTPException: _description_
+        HTTPException: _description_
+
+    Returns:
+        schemas.SuccessResponse: _description_
+    """
     
     if not db.query(models.Users).filter(and_(models.Users.email == user_credentials.email, models.Users.is_validated == True)).first():  # noqa: E712
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, 
@@ -324,35 +370,5 @@ def password_recovery(user_credentials: schemas.RecoveryCodeInput, db: Session =
         meta={
             "request_id": request.headers.get("request-id", "default_request_id"),
             "client": request.headers.get("client-type", "unknown"),
-        }
-    )
-
-
-@router.post('/test', status_code=status.HTTP_200_OK, response_model=schemas.SuccessResponse)
-def test(db: Session = Depends(get_db), user_id: int = Depends(oauth2.get_user_session)):
-    
-    user = db.query(models.Users).filter(and_(
-        models.Users.id == user_id
-    )).first()
-    
-    print(user)
-    
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=schemas.ErrorDetails(
-                type="Test",
-                message="User not found",
-                details=None
-            ).model_dump()
-        )
-
-    return schemas.SuccessResponse(
-        status="success",
-        message="Test",
-        data={},
-        meta={
-            "request_id": None,
-            "client": None,
         }
     )

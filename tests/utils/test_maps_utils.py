@@ -8,16 +8,27 @@ from pytest_mock import MockerFixture
 
 TEST_USER_AGENT = settings.user_agent
 TEST_NOMINATIM_BASE_URL = settings.nominatim_base_url
+mock_output = [
+    {
+        'lat': '52.345436', 
+        'lon': '12.83746', 
+        'display_name': 'address_test'
+    }
+    ]
 
 class TestMapsUtils:
     
     @pytest.mark.asyncio
     async def test_fetch_geocode_data_success(self, mocker: MockerFixture):
         
-        expected_output = [{"lat": "52.5200", "lon": "13.4050"}]
+        expected_output = {
+        'status': 'success',
+        'point': f"{mock_output[0].get('lat')},{mock_output[0].get('lon')}",
+        'address': mock_output[0].get('display_name')
+        }
         mock_get = AsyncMock(return_value=httpx.Response(
             status_code=200,
-            json=expected_output
+            json=mock_output
         ))
         mocker.patch("httpx.AsyncClient.get", mock_get)
 
@@ -35,16 +46,20 @@ class TestMapsUtils:
 
     @pytest.mark.asyncio
     async def test_fetch_geocode_data_error(self, mocker: MockerFixture):
- 
+        
+        expected_error = {
+        'status': 'error',
+        'details': "Error while fetching geocode data"
+        }
+        
         mock_get = AsyncMock(return_value=httpx.Response(status_code=500))
         mocker.patch("httpx.AsyncClient.get", mock_get)
-
         address = "Invalid Address"
-        with pytest.raises(HTTPException) as exc_info:
-            await maps.fetch_geocode_data(address)
-
-        assert exc_info.value.status_code == 500
-        assert exc_info.value.detail == "Error fetching geocode data"
+        
+        result = await maps.fetch_geocode_data(address)
+        print(result)
+        assert result == expected_error
+        
         mock_get.assert_called_once_with(
             f"{TEST_NOMINATIM_BASE_URL}/search",
             params={

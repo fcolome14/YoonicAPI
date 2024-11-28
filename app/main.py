@@ -3,14 +3,16 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import time
 from app.config import settings
+from app.database.seed import seed_data
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import users, auth, posts, legal
+from app.routers import users, auth, posts, legal, recall
 import firebase_admin
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from app.exception_handlers import custom_http_exception_handler
 from fastapi.exceptions import HTTPException
 from geopy.geocoders import Nominatim
+from app.database.connection import get_db
 
 app = FastAPI()
 client = Nominatim(user_agent=settings.user_agent)
@@ -30,6 +32,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.on_event("startup")
+async def seed_database():
+    db = next(get_db())
+    seed_data.seed_data(db)
 
 app.add_exception_handler(HTTPException, custom_http_exception_handler)
 
@@ -52,3 +59,4 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(posts.router)
 app.include_router(legal.router)
+app.include_router(recall.router)

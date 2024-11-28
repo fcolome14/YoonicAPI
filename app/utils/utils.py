@@ -1,10 +1,11 @@
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, and_
+from sqlalchemy import or_, and_, asc, desc
 import app.models as models
+from app.oauth2 import decode_access_token
 from typing import Union
 import pytz
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from app.config import settings
 import random
 import string
@@ -61,9 +62,11 @@ def is_user_valid(db: Session, email: str) -> models.Users | None:
 
 def is_user_logged(db: Session, username: str) -> bool:
     
-    response = db.query(models.TokenTable).join(models.Users, models.Users.id == models.TokenTable.user_id).filter(models.Users.username == username).first()
+    response: models.TokenTable = db.query(models.TokenTable).join(
+    models.Users, models.Users.id == models.TokenTable.user_id).filter(
+    models.Users.username == username).order_by(desc(models.TokenTable.created_at))
     
-    if response:
+    if response.status and response:
         return True
     return False
 
@@ -139,7 +142,7 @@ def is_code_valid(db: Session, code: int, email: str) -> Union[bool, str]:
     
     if not fetched_record or not fetched_record.code_expiration:
         return {"status": "error", "details": "Code not found"}
-    if fetched_record.code_expiration < datetime.utcnow().replace(tzinfo=utc):
+    if fetched_record.code_expiration < datetime.now(timezone.utc):
         return {"status": "error", "details": "Expired code"}
     
     return {"status": "success", "details": "Verified code"}
@@ -147,9 +150,22 @@ def is_code_valid(db: Session, code: int, email: str) -> Union[bool, str]:
 def is_code_expired(db: Session, email: str, code: int) -> bool:
     
     fetched_record = db.query(models.Users).filter(and_(models.Users.code == code, models.Users.email == email)).first()
-    if fetched_record and fetched_record.code_expiration > datetime.utcnow().replace(tzinfo=utc):
+    if fetched_record and fetched_record.code_expiration > datetime.now(timezone.utc):
         return True
     return False
+
+def is_location_address(location: str) -> bool:
+    """Check if a location is given as an address or coordinate
+
+    Args:
+        location (str): Input location
+
+    Returns:
+        bool: True if address, False if coordinates
+    """
+    
+    return isinstance(location, str)
+    
     
 def generate_code(db: Session) -> int:
     """Generates unique random code

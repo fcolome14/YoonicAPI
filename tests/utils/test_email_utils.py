@@ -40,7 +40,7 @@ class TestEmailUtils:
         12345,
         ])
     
-    def test_is_email_taken_exceptions(self, mocker: MockerFixture, fetched_email, mock_db_session):
+    def test_is_email_taken_exceptions(self, fetched_email, mock_db_session):
         """ Test if email is already taken exceptions """
         
         mock_db_session.query().filter().first.return_value = None

@@ -381,7 +381,6 @@ class TestAuth:
         )
 
         response = refresh_code(db_session, mock_request, mock_request)
-        print(response)
         
         assert response == expected_output
             

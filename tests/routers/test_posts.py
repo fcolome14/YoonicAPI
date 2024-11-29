@@ -5,7 +5,7 @@ from app.schemas import schemas
 import app.models
 from app.exception_handlers import custom_http_exception_handler
 from app.routers import posts
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import json
 
 class TestPosts:
@@ -20,25 +20,31 @@ class TestPosts:
         }
         
         return mock_request
+    
+    @pytest.fixture
+    def mock_fetched_data(self):
         
-    @pytest.mark.skip    
-    def test_create_post_succeed(self, mocker: MockerFixture, mock_request):
-        
-        db_session = mocker.Mock()
-        
-        fetched_data = schemas.NewPostInput(
+        return schemas.NewPostInput(
             title = "Test",
             description = None,
             start = datetime.now(timezone.utc),
-            end = datetime.now(timezone.utc),
+            end = datetime.now(timezone.utc) + timedelta(hours=10),
             location = "C/Test, 123",
-            is_public = True,
+            isPublic = True,
             category = 1,
             tags = None,
             cost = 0,
             currency = None,
-            capacity =None
+            capacity =None,
+            owner_id=1
         )
+        
+    
+    @pytest.mark.asyncio
+    async def test_create_post_succeed(self, mocker: MockerFixture, mock_request, mock_fetched_data):
+        
+        db_session = mocker.Mock()
+
         expected_output = schemas.SuccessResponse(
             status="success",
             message="New event created",
@@ -49,57 +55,44 @@ class TestPosts:
             }
         )
         
-        response = posts.create_post(post_data=fetched_data, db=db_session, user_id=1, request=mock_request)
-        
+        response = await posts.create_post(posting_data=mock_fetched_data, db=db_session, request=mock_request)
         assert expected_output == response
     
-    @pytest.mark.parametrize("token_auth, message, details", [
-        (1, "Invalid datetimes", "Starting date must be before ending date"),
+    @pytest.mark.parametrize("mock_type, mock_message, mock_details, mock_geodata_response, mock_is_start_before_end", [
+        ("NewPost", "Invalid datetimes", "Starting date must be before ending date", {"status": "error", "details": "Site not found"}, False),
+        
+        ("OSM", "Error while fetching geocode data", None, {"status": "error", "details": "Error while fetching geocode data"}, True)
     ])
     
-    @pytest.mark.skip
-    def test_create_post_exceptions(self, mocker: MockerFixture, mock_request, message, details, token_auth):
+    @pytest.mark.asyncio
+    async def test_create_post_exceptions(self, mocker: MockerFixture, mock_request, mock_fetched_data, 
+                                          mock_message, mock_details, mock_geodata_response, mock_is_start_before_end, mock_type):
         
         db_session = mocker.Mock()
-        
-        fetched_data = schemas.NewPostInput(
-            title = "Test",
-            description = None,
-            start = datetime.now(timezone.utc),
-            end = datetime.now(timezone.utc),
-            location = "C/Test, 123",
-            is_public = True,
-            category = 1,
-            tags = None,
-            cost = 0,
-            currency = None,
-            capacity = None
-        )
-        
-        # mocker.patch('app.routers.auth.get_db', return_value=db_session)
-        # mocker.patch('app.routers.auth.utils.is_password_valid', return_value=is_password_valid)
-        # mocker.patch('app.routers.auth.utils.is_user_logged', return_value=is_user_logged)
-        # db_session.query().filter().first.return_value = user
-        
+    
+        mocker.patch("app.routers.posts.time_utils.is_start_before_end", return_value=mock_is_start_before_end)
+        mocker.patch("app.routers.posts.maps_utils.fetch_geocode_data", return_value=mock_geodata_response)
+        mocker.patch("app.routers.posts.maps_utils.fetch_reverse_geocode_data", return_value=mock_geodata_response)
         expected_error = {
             "status": "error",
-            "message": message,
+            "message": mock_message,
             "data": {
-                "type": "NewPost",
-                "message": message,
-                "details": details
+                "type": mock_type,
+                "message": mock_message,
+                "details": mock_details
             },
             "meta": {
-                "request_id": mock_request.get("request-id"),
-                "client": mock_request.get("client-type")
+                "request_id": mock_request.headers.get("request-id"),
+                "client": mock_request.headers.get("client-type")
             }
         }
         
         with pytest.raises(HTTPException) as exception_data:
-            posts.create_post(post_data=fetched_data, db=db_session, user_id=token_auth, request=mock_request)
+            await posts.create_post(posting_data=mock_fetched_data, db=db_session, request=mock_request)
         
         error_output = custom_http_exception_handler(mock_request, exception_data.value)
         error_body = error_output.body.decode("utf-8")
         error_response = json.loads(error_body)
         
         assert expected_error == error_response
+        

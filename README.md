@@ -1,4 +1,4 @@
-[![MIT License](https://img.shields.io/github/license/fcolome14/yoonicapi.svg)](https://github.com/OWASP/Nettacker/blob/master/LICENSE)
+[![MIT License](https://img.shields.io/github/license/fcolome14/yoonicapi.svg)](https://github.com/fcolome14/YoonicAPI?tab=MIT-1-ov-file)
 [![Linnkedin](	https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/fcolome/)
 
 # YoonicAPI

@@ -1,3 +1,6 @@
+[![MIT License](https://img.shields.io/github/license/fcolome14/yoonicapi.svg)](https://github.com/OWASP/Nettacker/blob/master/LICENSE)
+[![Linnkedin](	https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/fcolome/)
+
 # YoonicAPI
 
 YoonicAPI is a FastAPI-based application that integrates with a PostgreSQL database, designed to host requests from Yoonic mobile app. Follow the instructions below to set up your local environment and contribute to the project.

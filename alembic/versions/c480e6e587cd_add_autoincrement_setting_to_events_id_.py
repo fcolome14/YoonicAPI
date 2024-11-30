@@ -19,8 +19,6 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.drop_constraint('fk_events_users', 'events', type_='foreignkey', if_exists=True)
-    op.drop_constraint('fk_events_cat', 'events', type_='foreignkey', if_exists=True)
     op.create_foreign_key('fk_category_id', 'events', 'cat', ['category'], ['id'], ondelete='CASCADE')
     op.create_foreign_key('fk_ownerid_id', 'events', 'users', ['owner_id'], ['id'], ondelete='CASCADE')
 

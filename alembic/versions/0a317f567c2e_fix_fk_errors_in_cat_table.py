@@ -19,10 +19,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column("events", sa.Column("category", sa.Integer(), nullable=True))
-    op.create_foreign_key("fk_events_cat", "events", "cat", ["category"], ["id"])
+    op.drop_constraint("fk_events_cat", "events", type_="foreignkey")
+    op.create_foreign_key("fk_events_cat", "events", "cat", ["category"], ["id"], ondelete='CASCADE')
 
 def downgrade() -> None:
     op.drop_constraint("fk_events_cat", "events", type_="foreignkey")
-    op.drop_column("events", "category")
 

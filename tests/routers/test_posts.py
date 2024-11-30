@@ -42,8 +42,6 @@ class TestPosts:
         
         db_session = mocker.Mock()
         
-        mocker.patch("app.config.settings.nominatim_base_url","http://test.com")
-        mocker.patch("app.config.settings.user_agent", "test")
         expected_output = schemas.SuccessResponse(
             status="success",
             message="New event created",
@@ -57,6 +55,10 @@ class TestPosts:
         response = await posts.create_post(posting_data=mock_post, db=db_session, request=mock_request)
         
         assert expected_output == response
+        
+        db_session.add.assert_called_once()
+        db_session.commit.assert_called_once()
+        db_session.refresh.assert_called_once()
     
     
     @pytest.mark.parametrize("mock_is_start_before_end, mock_fetch_geocode_data, type, message, details, mock_location, mock_is_location_address", [
@@ -76,8 +78,6 @@ class TestPosts:
         db_session = mocker.Mock()
         
         mock_post.location = mock_location
-        mocker.patch("app.config.settings.nominatim_base_url", return_value="http://test.com")
-        mocker.patch("app.config.settings.user_agent", return_value="test")
         mocker.patch('app.routers.posts.time_utils.is_start_before_end', return_value=mock_is_start_before_end)
         mocker.patch('app.routers.posts.maps_utils.fetch_geocode_data', return_value=mock_fetch_geocode_data)
         mocker.patch('app.routers.posts.utils.is_location_address', return_value=mock_is_location_address)

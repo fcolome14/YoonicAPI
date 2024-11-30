@@ -2,7 +2,6 @@ import pytest
 from pytest_mock import MockerFixture
 from fastapi import HTTPException
 from app.schemas import schemas
-import app.models
 from app.exception_handlers import custom_http_exception_handler
 from app.routers import posts
 from datetime import datetime, timezone, timedelta
@@ -43,8 +42,8 @@ class TestPosts:
         
         db_session = mocker.Mock()
         
-        mocker.patch("app.config.settings.nominatim_base_url", return_value="http://test.com")
-        mocker.patch("app.config.settings.user_agent", return_value="test")
+        mocker.patch("app.config.settings.nominatim_base_url","http://test.com")
+        mocker.patch("app.config.settings.user_agent", "test")
         expected_output = schemas.SuccessResponse(
             status="success",
             message="New event created",

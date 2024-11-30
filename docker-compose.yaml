@@ -47,6 +47,7 @@ services:
       - app-network
     depends_on:
       - postgres  # Ensures that the PostgreSQL container starts first
+    command: bash -c "alembic upgrade heads && uvicorn app.main:app --host 0.0.0.0 --port 8000"
   
   # nginx:
   #   image: nginx:latest

@@ -1,6 +1,13 @@
 import httpx
-from fastapi import HTTPException
 from app.config import settings
+from haversine import haversine, Unit
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import Session
+from fastapi import Depends
+from math import sin, cos, asin, acos, radians, degrees
+from app.database.connection import get_db
+import app.models as models
+from sqlalchemy import func
 
 NOMINATIM_BASE_URL = settings.nominatim_base_url
 USER_AGENT = settings.user_agent
@@ -23,9 +30,10 @@ async def fetch_geocode_data(address: str):
             if not fetched_data:
                 return {"status": "error", "details": "Site not found"}
             
-            coordinates = f'{fetched_data[0].get("lat")},{fetched_data[0].get("lon")}'
+            lat = fetched_data[0].get("lat")
+            lon = fetched_data[0].get("lon")
             address = fetched_data[0].get("display_name")
-            return {"status": "success", "point": coordinates, "address": address}
+            return {"status": "success", "point": (float(lat), float(lon)), "address": address}
         
         return {"status": "error", "details": "Error while fetching geocode data"}
 
@@ -47,8 +55,74 @@ async def fetch_reverse_geocode_data(lat: float, lon: float):
             if not fetched_data:
                 return {"status": "error", "details": "Site not found"}
             
-            coordinates = f'{fetched_data.get("lat")},{fetched_data.get("lon")}'
+            lat = fetched_data.get("lat")
+            lon = fetched_data.get("lon")
             address = fetched_data.get("display_name")
-            return {"status": "success", "point": coordinates, "address": address}
+            return {"status": "success", "point": (float(lat), float(lon)), "address": address}
         
         return {"status": "error", "details": "Error while fetching geocode data"}
+    
+
+def get_bounding_area(point: list[float], radius: int, units: int = 0) -> dict:
+    
+    lat, lon = point
+    earth_radius_km = 6371
+    km_to_mile_conv = 0.621371
+    
+    earth_radius = earth_radius_km
+    if units == 1:
+        earth_radius = earth_radius * km_to_mile_conv #Conversion to miles
+        radius = radius * km_to_mile_conv
+    
+    lat_r = radians(lat)
+
+    lat_delta = radius / earth_radius
+    min_lat = lat - degrees(lat_delta)
+    max_lat = lat + degrees(lat_delta)
+    
+    lon_delta = degrees(asin(sin(lat_delta) / cos(lat_r)))
+    min_lon = lon - lon_delta
+    max_lon = lon + lon_delta
+    
+    return {
+    "min_lat": min_lat,
+    "max_lat": max_lat,
+    "min_lon": min_lon,
+    "max_lon": max_lon,
+    }
+    
+    
+def get_within_events(area: dict, db: Session = Depends(get_db)):
+    bounding_box = func.ST_MakeEnvelope(
+        area.get("min_lat"), area.get("min_lon"), area.get("max_lat"), area.get("max_lon"), 4326
+    )
+    
+    results = db.query(models.Events).filter(func.ST_Within(models.Events.geom, bounding_box)).all()
+    event_data = []
+    for event in results:
+        event_dict = {column.name: getattr(event, column.name) for column in models.Events.__table__.columns}
+        event_data.append(event_dict)
+        
+    if not results:
+        return {"status": "success", "details": "No results found"}
+
+    return {"status": "success", "details": event_data}
+
+def compute_distance(pointA: tuple, pointB: tuple, units: int = 0) -> float:
+    """Compute Haversine distance between two points
+
+    Args:
+        pointA (tuple): First point geographical coordinates
+        pointB (tuple): Second point geographical coordinates
+        units (int, optional): 0: Kilometers | 1: Miles. Defaults to 0 (Km).
+
+    Returns:
+        float: Distance in the selected unit
+    """
+    match(units):
+        case 0:
+            return round(haversine(pointA, pointB, unit=Unit.KILOMETERS), 3)
+        case 1:
+            return round(haversine(pointA, pointB, unit=Unit.MILES), 3)
+
+

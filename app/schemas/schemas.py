@@ -55,6 +55,23 @@ class NewPostInput(BaseModel):
     cost: Optional[Decimal] = 0
     currency: Optional[Enum] = None
     capacity: Optional[int] = None
+
+
+class UpdatePostInput(BaseModel):
+    """ Update post """
+    id: int
+    notifyUsers: Optional[bool] = False
+    title: Optional[str] = None
+    description: Optional[str] = None
+    start: Optional[datetime] = None
+    end: Optional[datetime] = None
+    location: Optional[Union[str, Tuple[float, float]]] = None
+    isPublic: Optional[bool] = None
+    category: Optional[int] = None
+    # tags: Optional[List[str]] = None
+    cost: Optional[Decimal] = 0
+    currency: Optional[Enum] = None
+    capacity: Optional[int] = None
     
 
     

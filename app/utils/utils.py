@@ -6,7 +6,7 @@ from app.oauth2 import decode_access_token
 from typing import Union
 import pytz
 from datetime import datetime, timezone
-from app.config import settings
+from app.schemas import schemas
 import random
 import string
 
@@ -69,8 +69,6 @@ def is_user_logged(db: Session, username: str) -> bool:
     if response.status and response:
         return True
     return False
-
-
 
 def is_password_strong(plain_password: str) -> bool:
     """Check password strength. 
@@ -183,3 +181,55 @@ def generate_code(db: Session) -> int:
             break
         
     return validation_code
+
+def update_post_data(user_id: int, update_data: schemas.UpdatePostInput, db: Session) -> dict:
+    """Update post data if there are changes
+
+    Args:
+        user_id (int): Owner of the post
+        update_data (schemas.UpdatePostInput): Schema with all new data to be updated
+        db (Session): Database connection
+
+    Returns:
+        dict: Information about failures or successful changes applied
+    """
+    fetched_posts = db.query(models.Events).filter(and_(models.Events.owner_id == user_id, models.Events.id == update_data.id)).first()
+    
+    if not fetched_posts:
+        return {"status": "error", "details": "Record not found"}
+    
+    changes_made = False
+    
+    applied_actions = {}
+    
+    for field, new_value in update_data.model_dump(exclude_unset=True).items():
+        if hasattr(fetched_posts, field):
+            current_value = getattr(fetched_posts, field)
+
+            if new_value is not None and current_value != new_value:
+                setattr(fetched_posts, field, new_value)
+                changes_made = True
+                
+                if isinstance(current_value, datetime):
+                    current_value = current_value.isoformat()
+                if isinstance(new_value, datetime):
+                    new_value = new_value.isoformat()
+                if isinstance(current_value, float):
+                    new_value = float(new_value)
+                if isinstance(current_value, int):
+                    new_value = int(new_value)
+                    
+                key_old = f'{field}_old'
+                key_new = f'{field}_new'
+                applied_actions[key_old] = current_value
+                applied_actions[key_new] = new_value
+                
+
+    if not changes_made:
+        return {"status": "error", "details": "No changes applied"}
+    
+    db.commit()
+    db.refresh(fetched_posts)
+    
+    return {"status": "success", "details": applied_actions}
+        

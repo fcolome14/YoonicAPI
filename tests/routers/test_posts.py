@@ -104,3 +104,22 @@ class TestPosts:
         error_response = json.loads(error_body)
         
         assert expected_error == error_response
+    
+    
+    def test_nearby_events_succeed(self, mock_request, mocker: MockerFixture):
+        
+        db_session = mocker.Mock()
+        
+        mock_position = [41.273424, 23.872346]
+        expected_output = schemas.SuccessResponse(
+            status="success",
+            message="Fetched event by distance",
+            data={},
+            meta={
+                "request_id": mock_request.headers.get("request-id"), 
+                "client": mock_request.headers.get("client-type")
+            }
+        )
+        
+        assert expected_output == True
+        

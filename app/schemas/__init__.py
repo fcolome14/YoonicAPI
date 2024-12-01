@@ -1,4 +1,4 @@
-from .schemas import SuccessResponse, ErrorResponse, RegisterInput, ErrorDetails, MetaData, CodeValidationInput,RecoveryCodeInput
+from .schemas import SuccessResponse, ErrorResponse, RegisterInput, ErrorDetails, MetaData, CodeValidationInput,RecoveryCodeInput, UpdatePostInput
 from .bases import ErrorDetailsHandler
 from .token import TokenSchema, TokenData
 
@@ -11,5 +11,6 @@ __all__ = [
     "ErrorDetails", 
     "ErrorDetailsHandler",
     "MetaData",
+    "UpdatePostInput",
     "CodeValidationInput",
     "RecoveryCodeInput"] #Public interface exposure

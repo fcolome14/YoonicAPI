@@ -3,6 +3,7 @@ from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, DOUBLE_PREC
 from sqlalchemy.sql.expression import null, text
 from sqlalchemy.types import TIMESTAMP
 from sqlalchemy.orm import relationship
+from geoalchemy2 import Geometry
 
 class Users(Base):
     """ Users table model """
@@ -78,6 +79,7 @@ class Events(Base):
     owner_id = Column(Integer, ForeignKey("users.id"))
     category = Column(Integer, ForeignKey("cat.id"))
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text('now()'))
+    geom = Column(Geometry("POINT"), nullable=True)
     
     user = relationship("Users", backref="events")
     cat = relationship("Categories", backref="events")

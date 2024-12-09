@@ -2,12 +2,16 @@ import httpx
 from app.config import settings
 from haversine import haversine, Unit
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 from fastapi import Depends
 from math import sin, cos, asin, acos, radians, degrees
 from app.database.connection import get_db
 import app.models as models
 from sqlalchemy import func
+from datetime import datetime
+import pytz
+from app.utils import time_utils
 
 NOMINATIM_BASE_URL = settings.nominatim_base_url
 USER_AGENT = settings.user_agent
@@ -92,21 +96,33 @@ def get_bounding_area(point: list[float], radius: int, units: int = 0) -> dict:
     }
     
     
-def get_within_events(area: dict, db: Session = Depends(get_db)):
+def get_within_events(area: dict, lat: float, lon: float, db: Session = Depends(get_db)):
+    
+    user_tz = pytz.timezone(time_utils.get_timezone_by_coordinates(lat, lon))
+    current_time_utc = datetime.now(pytz.utc)
+    current_time_user_tz = current_time_utc.astimezone(user_tz)
+    
     bounding_box = func.ST_MakeEnvelope(
-        area.get("min_lat"), area.get("min_lon"), area.get("max_lat"), area.get("max_lon"), 4326
+        area.get("min_lon"), area.get("min_lat"), area.get("max_lon"), area.get("max_lat"), 4326
     )
     
-    results = db.query(models.Events).filter(func.ST_Within(models.Events.geom, bounding_box)).all()
-    event_data = []
-    for event in results:
-        event_dict = {column.name: getattr(event, column.name) for column in models.Events.__table__.columns}
-        event_data.append(event_dict)
-        
-    if not results:
-        return {"status": "success", "details": "No results found"}
+    headers = db.query(models.EventsHeaders).filter(func.ST_Within(models.EventsHeaders.geom, bounding_box)).all()
+    headers_id = [header.id for header in headers]
 
-    return {"status": "success", "details": event_data}
+    if not headers:
+        return {"status": "error", "details": "Event not found. Increase the range"}
+
+    lines = db.query(models.EventsLines).filter(
+        and_(
+            models.EventsLines.header_id.in_(headers_id),
+            models.EventsLines.end > current_time_user_tz
+        )
+    ).all()
+    
+    if not lines:
+        return {"status": "error", "details": "Empty event"}
+        
+    return {"status": "success", "details": (headers, lines)}
 
 def compute_distance(pointA: tuple, pointB: tuple, units: int = 0) -> float:
     """Compute Haversine distance between two points

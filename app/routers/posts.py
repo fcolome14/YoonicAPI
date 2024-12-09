@@ -1,6 +1,6 @@
 from fastapi import HTTPException, APIRouter, status, Depends, Request
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, desc
 from sqlalchemy import func
 from app.database.connection import get_db
 import pytz
@@ -8,52 +8,32 @@ from app.schemas import schemas
 from app.oauth2 import get_user_session
 from app.utils import time_utils, utils, maps_utils
 import app.models as models
+from datetime import datetime
+from app.services.posting_service import PostService
+from app.services.retrieve_service import RetrieveService
 
 router = APIRouter(prefix="/posts", tags=["Posts"])
 utc = pytz.UTC
 
 @router.post("/new-post", status_code=status.HTTP_200_OK, response_model=schemas.SuccessResponse)
-async def create_post(posting_data: schemas.NewPostInput, db: Session = Depends(get_db), _: int = Depends(get_user_session), request: Request = None):
-    
-    if not time_utils.is_start_before_end(posting_data.start, posting_data.end):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=schemas.ErrorDetails(
-                                type="NewPost",
-                                message="Invalid datetimes",
-                                details="Starting date must be before ending date").model_dump())
-    
-    if utils.is_location_address(posting_data.location):
-        geodata = await maps_utils.fetch_geocode_data(address=posting_data.location)
-    else:
-        geodata = await maps_utils.fetch_reverse_geocode_data(lat=posting_data.location[0], lon=posting_data.location[1])
-    
-    if geodata.get("status") == "error":
+async def create_post(
+    posting_data: schemas.NewPostInput,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_user_session),
+    request: Request = None,
+):
+    result = await PostService.create_post(db=db, user_id=user_id, posting_data=posting_data)
+
+    if result.get("status") == "error":
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=schemas.ErrorDetails(
                 type="OSM",
-                message=geodata.get("details"),
-                details=None
-            ).model_dump()
+                message=result.get("details"),
+                details=None,
+            ).model_dump(),
         )
-    
-    posting_data_dict = posting_data.model_dump()
-    posting_data_dict.pop("location", None)
-    
-    coordinates = geodata.get("point")
-    geom = func.ST_SetSRID(func.ST_Point(coordinates[0], coordinates[1]), 4326)
-    
-    new_post = models.Events(
-        **posting_data_dict,
-        address=geodata.get("address"),
-        coordinates=f'{coordinates[0]},{coordinates[1]}',
-        geom=geom,
-    )
-    
-    db.add(new_post)
-    db.commit()
-    db.refresh(new_post)
-    
+        
     return schemas.SuccessResponse(
         status="success",
         message="New event created",
@@ -66,51 +46,41 @@ async def create_post(posting_data: schemas.NewPostInput, db: Session = Depends(
 
     
 @router.get("/nearby-events", status_code=status.HTTP_200_OK, response_model=schemas.SuccessResponse)
-def nearby_events(lat: float, lon: float, radius: int = 10, unit: int = 0, db: Session = Depends(get_db), request: Request = None, _: int = Depends(get_user_session)):
+def nearby_events(lat: float, lon: float, radius: int = 10, unit: int = 0,
+                  db: Session = Depends(get_db), request: Request = None, _: int = Depends(get_user_session)):
     
     reference_point = [lat, lon]
     area = maps_utils.get_bounding_area(point=reference_point, radius=radius)
-    events_within_area = maps_utils.get_within_events(area, db=db)
+    events_within_area = maps_utils.get_within_events(area, db=db, lat=lat, lon=lon)
     
     if events_within_area.get("status") == "error":
-        #ERROR
-        pass
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail=schemas.ErrorDetails(
+                type="GetNearbyEvents",
+                message=events_within_area.get("details"),
+                details=None
+            ).model_dump()
+        )
     
-    event_data = []
-    for event in events_within_area.get("details"):
-        try:
-            lat, lon = event.get("coordinates").split(",")
-            event_coordinates = float(lat), float(lon)
-        except ValueError:
-            event_coordinates = (0.0, 0.0)
-            
-        event_dict = {
-            "id": event.get("id"),
-            "title": event.get("title"),
-            "description": event.get("description"),
-            "address": event.get("address"),
-            "start": event.get("start").strftime("%Y-%m-%d %H:%M:%S"),
-            "end": event.get("end").strftime("%Y-%m-%d %H:%M:%S"),
-            "coordinates": event.get("coordinates"),
-            "img": event.get("img"),
-            "img2": event.get("img2"),
-            "cost": event.get("cost"),
-            "capacity": event.get("capacity"),
-            "currency": event.get("currency"),
-            "isPublic": event.get("isPublic"),
-            "owner_id": event.get("owner_id"),
-            "category": event.get("category"),
-            "distance": maps_utils.compute_distance(pointA=reference_point, pointB=event_coordinates, units=unit),
-            "distance_unit": "km" if unit == 0 else "miles"
-            }
-        event_data.append(event_dict)
-
+    header, lines = events_within_area.get("details")
+    response = RetrieveService.generate_nearby_events_structure(db, header, lines, reference_point, unit)
+    if not response:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail=schemas.ErrorDetails(
+                type="GetNearbyEvents",
+                message="Events not found",
+                details=None
+            ).model_dump()
+        )
+    
     return schemas.SuccessResponse(
         status="success",
         message="Fetched nearby events",
         data={
-            "total": len(event_data),
-            "detail": event_data,
+            "total": len(response),
+            "detail": response,
             },
         meta={
             "request_id": request.headers.get("request-id", "default_request_id"),
@@ -119,9 +89,13 @@ def nearby_events(lat: float, lon: float, radius: int = 10, unit: int = 0, db: S
     )
 
 @router.get("/owned-events", status_code=status.HTTP_200_OK, response_model=schemas.SuccessResponse)
-def owned_events(db: Session = Depends(get_db), request: Request = None, user_id: int = Depends(get_user_session)):
+def owned_events(lat: float, lon: float, db: Session = Depends(get_db), request: Request = None, user_id: int = Depends(get_user_session)):
     
-    fetched_posts = db.query(models.Events).filter(models.Events.owner_id == user_id).all()
+    user_tz = pytz.timezone(time_utils.get_timezone_by_coordinates(lat, lon))
+    current_time_utc = datetime.now(pytz.utc)
+    current_time_user_tz = current_time_utc.astimezone(user_tz)
+
+    fetched_posts = db.query(models.Events).filter(and_(models.Events.owner_id == user_id, models.Events.end >= current_time_user_tz)).all()
     
     event_data = []
     for event in fetched_posts:
@@ -169,11 +143,12 @@ def get_event_details(event_id: int, lat: float, lon: float, radius: int = 10, u
     related_events = []
     area = maps_utils.get_bounding_area(point=reference_point, radius=radius, units=unit)
     
-    events_within_area = maps_utils.get_within_events(area, db=db)
-    if not events_within_area:
+    events_within_area = maps_utils.get_within_events(area, db=db, lat=lat, lon=lon)
+    if events_within_area.get("status") == "error":
         nearby_event_ids = []
     else:
         nearby_event_ids = [event.get("id") for event in events_within_area.get("details", []) if event.get("id") != event_id]
+        print(nearby_event_ids)
 
     fetched_post = db.query(models.Events).filter(models.Events.id == event_id).first()
     if not fetched_post:

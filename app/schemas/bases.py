@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field, field_validator
-from typing import Optional, List, Any, Dict
+from typing import Optional, List, Any, Dict, Union
 from datetime import datetime
 
 
@@ -33,3 +33,18 @@ class ErrorDetailsHandler(BaseModel):
     
     type: str
     details: Optional[str] = None
+
+class RateDetails(BaseModel):
+    
+    title: str
+    amount: float
+    currency: str
+
+class EventLines(BaseModel):
+    
+    start: datetime
+    end: datetime
+    rate: Union[RateDetails, List[RateDetails]]
+    isPublic: bool
+    capacity: Optional[int] = 0
+    invited: Optional[List[int]] = None

@@ -55,12 +55,24 @@ class Subscriptions(Base):
     user_id = Column(Integer, primary_key=True, nullable=False) #FK
     event_id = Column(Integer, primary_key=True, nullable=False) #FK
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text('now()'))
+
+class Rates(Base):
+    """ Rates table model """
     
-class Events(Base):
+    __tablename__ = "rate"
     
-    """" Events table model"""
+    id = Column(Integer, primary_key=True, nullable=False, autoincrement=True)
+    title = Column(String, nullable=True)
+    currency = Column(String, nullable=True, default="EUR")
+    amount = Column(DOUBLE_PRECISION, nullable=True, default=0.00)
+    line_id = Column(Integer, nullable=False)
+    created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text('now()'))
     
-    __tablename__ = "events"
+class EventsHeaders(Base):
+    
+    """" Header of events table model"""
+    
+    __tablename__ = "events_headers"
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     title = Column(String, nullable=False)
@@ -69,17 +81,26 @@ class Events(Base):
     coordinates = Column(String, nullable=False)
     img = Column(String, nullable=True)
     img2 = Column(String, nullable=True)
-    start = Column(TIMESTAMP(timezone=False), nullable=False)
-    end = Column(TIMESTAMP(timezone=False), nullable=False)
-    cost = Column(DOUBLE_PRECISION, nullable=True, default=0.00)
-    capacity = Column(Integer, nullable=True)
-    # tags = Column(Integer, nullable=True)
-    currency = Column(String, nullable=True)
-    isPublic = Column(Boolean, nullable=False, default=True)
     owner_id = Column(Integer, ForeignKey("users.id"))
     category = Column(Integer, ForeignKey("cat.id"))
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text('now()'))
     geom = Column(Geometry("POINT"), nullable=True)
     
-    user = relationship("Users", backref="events")
-    cat = relationship("Categories", backref="events")
+    user = relationship("Users", backref="events_headesrs")
+    cat = relationship("Categories", backref="events_headers")
+
+class EventsLines(Base):
+    
+    """" Lines of events table model"""
+    
+    __tablename__ = "events_lines"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    start = Column(TIMESTAMP(timezone=False), nullable=False)
+    end = Column(TIMESTAMP(timezone=False), nullable=False)
+    capacity = Column(Integer, nullable=True)
+    isPublic = Column(Boolean, nullable=False, default=True)
+    created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text('now()'))
+    header_id = Column(Integer, ForeignKey("events_headers.id"))
+    
+    header = relationship("EventsHeaders", backref="events_lines")

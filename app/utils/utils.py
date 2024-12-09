@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_, asc, desc
 import app.models as models
 from app.oauth2 import decode_access_token
-from typing import Union
+from typing import Union, List
 import pytz
 from datetime import datetime, timezone
 from app.schemas import schemas
@@ -232,4 +232,13 @@ def update_post_data(user_id: int, update_data: schemas.UpdatePostInput, db: Ses
     db.refresh(fetched_posts)
     
     return {"status": "success", "details": applied_actions}
-        
+    
+def split_dict_to_array(input_dict: dict[int, datetime]) -> list[datetime]:
+    start, end = [], []
+    for day in input_dict.values():
+        start.append(day[0][0])
+        end.append(day[0][1])
+    return start, end
+
+def split_array_to_dict(array: list, freq: int) -> dict[int, datetime]:
+    return {i: array[i * freq:(i + 1) * freq] for i in range((len(array) + freq - 1) // freq)}

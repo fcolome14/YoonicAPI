@@ -23,7 +23,7 @@ class TestMapsUtils:
         
         expected_output = {
         'status': 'success',
-        'point': f"{mock_output[0].get('lat')},{mock_output[0].get('lon')}",
+        'point': (float(mock_output[0].get('lat')), float(mock_output[0].get('lon'))),
         'address': mock_output[0].get('display_name')
         }
         mock_get = AsyncMock(return_value=httpx.Response(
@@ -57,7 +57,6 @@ class TestMapsUtils:
         address = "Invalid Address"
         
         result = await maps.fetch_geocode_data(address)
-        print(result)
         assert result == expected_error
         
         mock_get.assert_called_once_with(

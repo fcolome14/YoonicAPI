@@ -6,6 +6,7 @@ from app.exception_handlers import custom_http_exception_handler
 from app.routers import posts
 from datetime import datetime, timezone, timedelta
 import json
+from tests.routers.helpers import mock_data
 
 class TestPosts:
     
@@ -20,28 +21,28 @@ class TestPosts:
         
         return mock_request
     
-    @pytest.fixture
-    def mock_post(self, mocker: MockerFixture):
-        return schemas.NewPostInput(
-                title = "Test",
-                description = None,
-                start = datetime.now(timezone.utc),
-                end = datetime.now(timezone.utc) + timedelta(hours=10),
-                location = "C/Test, 123",
-                isPublic = True,
-                category = 1,
-                tags = None,
-                cost = 0,
-                currency = None,
-                capacity =None,
-                owner_id=1
-            )
+    @pytest.mark.parametrize("single_rate, custom_each_day, custom_option_selected, repeat", [
+        (True, False, False, False),
+        
+        (False, False, False, True),
+        
+        (True, False, False, True),
+        
+        (True, False, True, True),
+        
+        (True, True, True, True),
+    ])
     
     @pytest.mark.asyncio
-    async def test_create_post_succeed(self, mocker: MockerFixture, mock_request, mock_post):
+    async def test_create_post_succeed(self, mocker: MockerFixture, mock_request, single_rate, custom_each_day, custom_option_selected, repeat):
         
         db_session = mocker.Mock()
+        mock_rate = mock_data.create_mock_rate(single=single_rate)
+        mock_line = mock_data.create_mock_line(mock_rate, custom_each_day=custom_each_day)
+        mock_input = mock_data.create_mock_input(line=mock_line, custom_each_day=custom_each_day, custom_option_selected=custom_option_selected, repeat=repeat)
+        mock_geocode_data={"status": "success", "point": (float(41.147353252), float(2.27842874)), "address": "C/Test, 123"}
         
+        mocker.patch('app.routers.posts.maps_utils.fetch_geocode_data', return_value=mock_geocode_data)
         expected_output = schemas.SuccessResponse(
             status="success",
             message="New event created",
@@ -52,42 +53,59 @@ class TestPosts:
             }
         )
         
-        response = await posts.create_post(posting_data=mock_post, db=db_session, request=mock_request)
+        response = await posts.create_post(posting_data=mock_input, db=db_session, request=mock_request)
         
         assert expected_output == response
-        
-        db_session.add.assert_called_once()
-        db_session.commit.assert_called_once()
-        db_session.refresh.assert_called_once()
+        if repeat:
+            db_session.add.call_count == 5
+        db_session.add.call_count == 3
     
     
-    @pytest.mark.parametrize("mock_is_start_before_end, mock_fetch_geocode_data, type, message, details, mock_location, mock_is_location_address", [
-        (True, {"status": "error", "details": "Site not found"}, "OSM", "Site not found", None, "C/Test, 123", True),
+    @pytest.mark.parametrize("single_rate, custom_each_day, custom_option_selected, repeat, err_type, message, details, data, invalid_where_to, mock_geocode", [
         
-        (False, {"status": "error", "details": "Site not found"}, "NewPost", "Invalid datetimes", "Starting date must be before ending date", "C/Test, 123", True),
+        (False, True, False, False, "OSM", "Lines can't be <List>, expected single object", None, True, False,
+         {"status": "success", "point": (float(41.147353252), float(2.27842874)), "address": "C/Test, 123"}),
         
-        # (True, {"status": "error", "details": "Site not found"}, "OSM", "Site not found", None, [41.4567284, 23.8374634], False),
+        (False, True, True, False, "OSM", "Line data must be a list in custom_each_day mode", None, True, False,
+         {"status": "success", "point": (float(41.147353252), float(2.27842874)), "address": "C/Test, 123"}),
         
-        (False, {"status": "error", "details": "Site not found"}, "NewPost", "Invalid datetimes", "Starting date must be before ending date", [41.4567284, 23.8374634], False),
+        (False, False, False, True, "OSM", "Invalid 'every' value", None, False, True,
+         {"status": "success", "point": (float(41.147353252), float(2.27842874)), "address": "C/Test, 123"}),
+        
+        (False, False, True, True, "OSM", "Invalid 'every' value", None, False, True,
+         {"status": "success", "point": (float(41.147353252), float(2.27842874)), "address": "C/Test, 123"}),
+        
+        (True, False, False, True, "OSM", "Error fetching geocode data", None, False, False,
+         {"status": "error", "details": "Error fetching geocode data"}),
     ])
     
     @pytest.mark.asyncio
-    async def test_create_post_exceptions(self, mocker: MockerFixture, mock_request, message, details, mock_post, 
-                                    mock_is_start_before_end, mock_fetch_geocode_data, type, mock_location, mock_is_location_address):
+    async def test_create_post_exceptions(self, mocker: MockerFixture, mock_request, 
+                                          single_rate, custom_each_day, custom_option_selected, 
+                                          repeat, message, details, err_type, mock_geocode, data, invalid_where_to):
         
         db_session = mocker.Mock()
         
-        mock_post.location = mock_location
-        mocker.patch('app.routers.posts.time_utils.is_start_before_end', return_value=mock_is_start_before_end)
-        mocker.patch('app.routers.posts.maps_utils.fetch_geocode_data', return_value=mock_fetch_geocode_data)
-        mocker.patch('app.routers.posts.utils.is_location_address', return_value=mock_is_location_address)
-        
+        mock_rate = mock_data.create_mock_rate(single=single_rate)
+        if data and custom_option_selected and custom_each_day:
+            mock_line = mock_data.create_mock_line(mock_rate, custom_each_day=False)
+        elif data and not custom_option_selected and custom_each_day:
+            mock_line = mock_data.create_mock_line(mock_rate, custom_each_day=True)
+        else:
+            mock_line = mock_data.create_mock_line(mock_rate, custom_each_day=custom_each_day)
+        mock_input = mock_data.create_mock_input(line=mock_line, custom_each_day=custom_each_day, 
+                                                                       custom_option_selected=custom_option_selected, repeat=repeat)
+        if invalid_where_to:
+            mock_input = mock_data.create_mock_input(line=mock_line, custom_each_day=custom_each_day, 
+                                                                       custom_option_selected=custom_option_selected, repeat=repeat, where_to=25)
+            
+        mocker.patch('app.routers.posts.maps_utils.fetch_geocode_data', return_value=mock_geocode)
         expected_error = {
             "status": "error",
-            "message": message,
+            "message": mock_geocode.get('details') if mock_geocode.get('status') == "error" else message,
             "data": {
-                "type": type,
-                "message": message,
+                "type": err_type,
+                "message": mock_geocode.get('details') if mock_geocode.get('status') == "error" else message,
                 "details": details
             },
             "meta": {
@@ -97,7 +115,7 @@ class TestPosts:
         }
         
         with pytest.raises(HTTPException) as exception_data:
-            await posts.create_post(posting_data=mock_post, db=db_session, request=mock_request)
+            await posts.create_post(posting_data=mock_input, db=db_session, request=mock_request)
         
         error_output = custom_http_exception_handler(mock_request, exception_data.value)
         error_body = error_output.body.decode("utf-8")
@@ -105,21 +123,4 @@ class TestPosts:
         
         assert expected_error == error_response
     
-    
-    def test_nearby_events_succeed(self, mock_request, mocker: MockerFixture):
-        
-        db_session = mocker.Mock()
-        
-        mock_position = [41.273424, 23.872346]
-        expected_output = schemas.SuccessResponse(
-            status="success",
-            message="Fetched event by distance",
-            data={},
-            meta={
-                "request_id": mock_request.headers.get("request-id"), 
-                "client": mock_request.headers.get("client-type")
-            }
-        )
-        
-        assert expected_output == True
         

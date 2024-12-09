@@ -7,7 +7,7 @@ YoonicAPI is a FastAPI-based application that integrates with a PostgreSQL datab
 
 ## Steps to run the project:
 
-> **_NOTE:_**   Before starting, you must ensure you have downloaded PostgreSQL database as well as a user configuration.
+> **_NOTE:_**   Before starting, you must ensure you have downloaded PostgreSQL database as well as a user configuration. In the installation wizard screen, select PostGis system extenstion
 
 ### 1. Clone the Repository
 First, clone the repository to your local machine:

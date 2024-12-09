@@ -9,7 +9,7 @@ YoonicAPI is a FastAPI-based application that integrates with a PostgreSQL datab
 
 > **_NOTE:_**   Before starting, you must ensure you have downloaded PostgreSQL database as well as a user configuration. In the installation wizard screen, select PostGis system extenstion
 
-> Follow this [link](https://minikube.sigs.k8s.io/docs/start/) to install and configure K8
+> Follow this [link](https://minikube.sigs.k8s.io/docs/start/) to install K8 and kubectl [link](https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/)
 
 ### 1. Clone the Repository
 First, clone the repository to your local machine:

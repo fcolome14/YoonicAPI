@@ -2,9 +2,9 @@ version: '3.8'
 
 services:
 
-# PostgreSQL database container
+  # PostgreSQL database container with PostGIS
   postgres:
-    image: postgres:14
+    image: postgis/postgis:15-3.3
     container_name: postgres-container
     ports:
       - 5432:5432
@@ -42,24 +42,12 @@ services:
       - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS}
       - NOMINATIM_BASE_URL=${NOMINATIM_BASE_URL}
       - USER_AGENT=${USER_AGENT}
-
     networks:
       - app-network
     depends_on:
-      - postgres  # Ensures that the PostgreSQL container starts first
-    command: bash -c "alembic upgrade heads && uvicorn app.main:app --host 0.0.0.0 --port 8000"
-  
-  # nginx:
-  #   image: nginx:latest
-  #   container_name: nginx_server
-  #   ports:
-  #     - "80:80"
-  #   volumes:
-  #     - ./nginx.conf:/etc/nginx/nginx.conf
-  #   networks:
-  #     - app-network
-  #   depends_on:
-  #     - yoonic_api
+      - postgres
+    command: >
+      bash -c "alembic upgrade heads && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
 networks:
   app-network:

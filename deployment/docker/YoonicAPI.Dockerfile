@@ -13,6 +13,6 @@ RUN pip install --no-cache-dir -r requeriments.txt
 
 COPY . .
 
-EXPOSE 80
+EXPOSE 8000
 
-CMD ["bash", "-c", "./wait-for-it.sh ${DATABASE_HOSTNAME}:${DATABASE_PORT} -- alembic upgrade heads && uvicorn app.main:app --host 0.0.0.0 --port 80"]
+CMD ["bash", "-c", "./wait-for-it.sh ${DATABASE_HOSTNAME}:${DATABASE_PORT} -- alembic upgrade heads && uvicorn app.main:app --host 0.0.0.0 --port 8000"]

@@ -18,7 +18,9 @@ services:
       - app-network
 
   yoonic_api:
-    build: .
+    build:
+      context: ../../  # Adjust path relative to the new location
+      dockerfile: deployment/docker/FastAPI.Dockerfile
     container_name: yoonic_api-container
     ports:
       - 8000:8000  # Exposes API on port 8000
@@ -47,7 +49,7 @@ services:
     depends_on:
       - postgres
     command: >
-      bash -c "alembic upgrade heads && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+      bash -c "alembic upgrade heads && uvicorn app.main:app --host 0.0.0.0 --port 80"
 
 networks:
   app-network:

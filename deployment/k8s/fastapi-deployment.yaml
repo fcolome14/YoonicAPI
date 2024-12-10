@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastapi
+  namespace: fastapi-namespace
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: fastapi
+  template:
+    metadata:
+      labels:
+        app: fastapi
+    spec:
+      containers:
+      - name: fastapi
+        image: fcolome/yoonic-app:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: DATABASE_HOSTNAME
+          value: postgres
+        - name: DATABASE_PORT
+          value: "5432"
+        - name: DATABASE_NAME
+          valueFrom:
+            secretKeyRef:
+              name: fastapi-secrets
+              key: DATABASE_NAME
+        - name: DATABASE_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: fastapi-secrets
+              key: DATABASE_USERNAME
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: fastapi-secrets
+              key: DATABASE_PASSWORD
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: fastapi-secrets
+              key: SECRET_KEY
+        command: ["sh", "-c", "alembic upgrade heads && uvicorn app.main:app --host 0.0.0.0 --port 8000"]

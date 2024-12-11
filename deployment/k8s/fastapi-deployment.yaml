@@ -19,10 +19,17 @@ spec:
         ports:
         - containerPort: 8000
         env:
+        # Sensitive Environment Variables from Secrets
         - name: DATABASE_HOSTNAME
-          value: postgres
+          valueFrom:
+            secretKeyRef:
+              name: fastapi-secrets
+              key: DATABASE_HOSTNAME
         - name: DATABASE_PORT
-          value: "5432"
+          valueFrom:
+            secretKeyRef:
+              name: fastapi-secrets
+              key: DATABASE_PORT
         - name: DATABASE_NAME
           valueFrom:
             secretKeyRef:
@@ -43,4 +50,66 @@ spec:
             secretKeyRef:
               name: fastapi-secrets
               key: SECRET_KEY
+        - name: REFRESH_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: fastapi-secrets
+              key: REFRESH_SECRET_KEY
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          valueFrom:
+            secretKeyRef:
+              name: fastapi-secrets
+              key: GOOGLE_APPLICATION_CREDENTIALS
+        - name: EMAIL_PASSWORD
+          valueFrom:
+            configMapKeyRef:
+              name: fastapi-secrets
+              key: EMAIL_PASSWORD
+        # Non-sensitive Environment Variables from ConfigMap
+        - name: DOMAIN
+          valueFrom:
+            configMapKeyRef:
+              name: fastapi-config
+              key: DOMAIN
+        - name: EMAIL
+          valueFrom:
+            configMapKeyRef:
+              name: fastapi-config
+              key: EMAIL
+        - name: SMTP_SERVER
+          valueFrom:
+            configMapKeyRef:
+              name: fastapi-config
+              key: SMTP_SERVER
+        - name: SMTP_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: fastapi-config
+              key: SMTP_PORT
+        - name: USER_AGENT
+          valueFrom:
+            configMapKeyRef:
+              name: fastapi-config
+              key: USER_AGENT
+        - name: NOMINATIM_BASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: fastapi-config
+              key: NOMINATIM_BASE_URL
+        # Other Variables from ConfigMap
+        - name: ALGORITHM
+          valueFrom:
+            configMapKeyRef:
+              name: fastapi-config
+              key: ALGORITHM
+        - name: ACCESS_TOKEN_EXPIRE_MINUTES
+          valueFrom:
+            configMapKeyRef:
+              name: fastapi-config
+              key: ACCESS_TOKEN_EXPIRE_MINUTES
+        - name: EMAIL_CODE_EXPIRE_MINUTES
+          valueFrom:
+            configMapKeyRef:
+              name: fastapi-config
+              key: EMAIL_CODE_EXPIRE_MINUTES
         command: ["sh", "-c", "alembic upgrade heads && uvicorn app.main:app --host 0.0.0.0 --port 8000"]

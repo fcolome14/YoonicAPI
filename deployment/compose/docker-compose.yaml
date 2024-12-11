@@ -19,13 +19,13 @@ services:
 
   yoonic_api:
     build:
-      context: ../../  # Adjust path relative to the new location
-      dockerfile: deployment/docker/FastAPI.Dockerfile
+      context: ../../
+      dockerfile: deployment/docker/YoonicAPI.Dockerfile
     container_name: yoonic_api-container
     ports:
-      - 8000:8000  # Exposes API on port 8000
+      - 8000:8000
     environment:
-      - DATABASE_HOSTNAME=${DATABASE_HOSTNAME}  # Points to the postgres service
+      - DATABASE_HOSTNAME=${DATABASE_HOSTNAME}
       - DATABASE_PORT=${DATABASE_PORT}
       - DATABASE_PASSWORD=${DATABASE_PASSWORD}
       - DATABASE_NAME=${DATABASE_NAME}

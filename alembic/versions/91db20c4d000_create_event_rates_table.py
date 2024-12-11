@@ -28,7 +28,6 @@ def upgrade() -> None:
     
     op.drop_column("events_lines","cost")
     op.drop_column("events_lines","currency")
-    op.add_column("events_lines", sa.Column("cost_id", sa.Integer(), nullable=False))
     
     op.create_foreign_key('fk_lineid_eventid', 'rate', 'events_lines', ['line_id'], ['id'], ondelete='CASCADE')
 

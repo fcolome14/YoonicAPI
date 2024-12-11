@@ -62,7 +62,7 @@ spec:
               key: GOOGLE_APPLICATION_CREDENTIALS
         - name: EMAIL_PASSWORD
           valueFrom:
-            configMapKeyRef:
+            secretKeyRef:
               name: fastapi-secrets
               key: EMAIL_PASSWORD
         # Non-sensitive Environment Variables from ConfigMap

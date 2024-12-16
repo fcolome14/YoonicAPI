@@ -48,9 +48,7 @@ async def create_post(
 def nearby_events(lat: float, lon: float, radius: int = 10, unit: int = 0,
                   db: Session = Depends(get_db), request: Request = None, _: int = Depends(get_user_session)):
     
-    reference_point = [lat, lon]
-    area = maps_utils.get_bounding_area(point=reference_point, radius=radius)
-    events_within_area = maps_utils.get_within_events(area, db=db, lat=lat, lon=lon)
+    events_within_area, reference_point = RetrieveService.get_events_within_area(db, lat, lon, radius, unit)
     
     if events_within_area.get("status") == "error":
         raise HTTPException(
@@ -90,43 +88,28 @@ def nearby_events(lat: float, lon: float, radius: int = 10, unit: int = 0,
 @router.get("/owned-events", status_code=status.HTTP_200_OK, response_model=schemas.SuccessResponse)
 def owned_events(lat: float, lon: float, db: Session = Depends(get_db), request: Request = None, user_id: int = Depends(get_user_session)):
     
-    user_tz = pytz.timezone(time_utils.get_timezone_by_coordinates(lat, lon))
-    current_time_utc = datetime.now(pytz.utc)
-    current_time_user_tz = current_time_utc.astimezone(user_tz)
-
-    fetched_posts = db.query(models.Events).filter(and_(models.Events.owner_id == user_id, models.Events.end >= current_time_user_tz)).all()
-    
-    event_data = []
-    for event in fetched_posts:
-        event_dict = {
-            "id": event.id,
-            "title": event.title,
-            "description": event.description,
-            "address": event.address,
-            "start": event.start,
-            "end": event.end,
-            "coordinates": event.coordinates,
-            "img": event.img,
-            "img2": event.img2,
-            "cost": event.cost,
-            "capacity": event.capacity,
-            "currency": event.currency,
-            "isPublic": event.isPublic,
-            "category": event.category,
-            }
-        event_data.append(event_dict)
-        
-    
-    if not fetched_posts:
-        #ERROR
-        pass
+    fetched_headers = db.query(models.EventsHeaders).filter(and_(models.EventsHeaders.owner_id == user_id)).all()
+    header_ids = [item.id for item in fetched_headers]
+    current_pos = (lat, lon)
+    fetched_lines = db.query(models.EventsLines).filter(and_(models.EventsLines.header_id.in_(header_ids))).all()
+    #TODO: FILTER BY ACTIVE EVENTS
+    response = RetrieveService.generate_nearby_events_structure(db, fetched_headers, fetched_lines, current_pos, 0)
+    if not response:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail=schemas.ErrorDetails(
+                type="GetOwnEvents",
+                message="Events not found",
+                details=None
+            ).model_dump()
+        )
 
     return schemas.SuccessResponse(
         status="success",
         message="Fetched owned events",
         data={
-            "total": len(event_data),
-            "detail": event_data,
+            "total": len(response),
+            "detail": response,
             },
         meta={
             "request_id": request.headers.get("request-id", "default_request_id"),
@@ -136,75 +119,16 @@ def owned_events(lat: float, lon: float, db: Session = Depends(get_db), request:
 
 @router.get("/event-details", status_code=status.HTTP_200_OK, response_model=schemas.SuccessResponse)
 def get_event_details(event_id: int, lat: float, lon: float, radius: int = 10, unit: int = 0, 
-                      db: Session = Depends(get_db), request: Request = None, _: int = Depends(get_user_session)):
+                      db: Session = Depends(get_db), request: Request = None, user_id: int = Depends(get_user_session)):
     
-    reference_point = [lat, lon]
-    related_events = []
-    area = maps_utils.get_bounding_area(point=reference_point, radius=radius, units=unit)
-    
-    events_within_area = maps_utils.get_within_events(area, db=db, lat=lat, lon=lon)
-    if events_within_area.get("status") == "error":
-        nearby_event_ids = []
-    else:
-        nearby_event_ids = [event.get("id") for event in events_within_area.get("details", []) if event.get("id") != event_id]
-        print(nearby_event_ids)
-
-    fetched_post = db.query(models.Events).filter(models.Events.id == event_id).first()
-    if not fetched_post:
-        event_dict = {}
-    else:
-        fetched_related_posts = db.query(models.Events).filter(
-            and_(models.Events.id.in_(nearby_event_ids), 
-                 models.Events.isPublic == True, # noqa: E712
-                 models.Events.category == fetched_post.category)).all()
-        
-        try:
-            event_lat, event_lon = fetched_post.coordinates.split(",")
-            event_coordinates = float(event_lat), float(event_lon)
-        except ValueError:
-            event_coordinates = (0.0, 0.0)
-            
-        event_dict = {
-            "id": fetched_post.id,
-            "title": fetched_post.title,
-            "description": fetched_post.description,
-            "address": fetched_post.address,
-            "start": fetched_post.start.strftime("%Y-%m-%d %H:%M:%S") if fetched_post.start else None,
-            "end": fetched_post.end.strftime("%Y-%m-%d %H:%M:%S") if fetched_post.end else None,
-            "coordinates": fetched_post.coordinates,
-            "img": fetched_post.img,
-            "img2": fetched_post.img2,
-            "cost": fetched_post.cost,
-            "capacity": fetched_post.capacity,
-            "currency": fetched_post.currency,
-            "isPublic": fetched_post.isPublic,
-            "category": fetched_post.category,
-            "distance": maps_utils.compute_distance(pointA=event_coordinates, pointB=(lat, lon), units=unit),
-            "distance_unit": "km" if unit == 0 else "miles"
-        }
-        
-        if not fetched_related_posts:
-            related_events = []
-        else:
-            related_events = [
-                {
-                    "id": related_event.id,
-                    "category": related_event.category,
-                    "title": related_event.title,
-                    "address": related_event.address,
-                    "start": related_event.start.strftime("%Y-%m-%d %H:%M:%S") if related_event.start else None,
-                    "end": related_event.end.strftime("%Y-%m-%d %H:%M:%S") if related_event.end else None,
-                    "img": related_event.img,
-                    "img2": related_event.img2,
-                }
-                for related_event in fetched_related_posts
-            ]
+    selected_event, related_events = RetrieveService.generate_details_events_structure(db, event_id, lat, lon, radius, user_id, unit)
     
     return schemas.SuccessResponse(
         status="success",
         message="Event and suggested events",
         data={
-            "selected_event": event_dict,
+            "selected_event": selected_event,
+            "total_related_events": len(selected_event),
             "related_events": related_events
         },
         meta={

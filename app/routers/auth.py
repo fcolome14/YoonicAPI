@@ -1,7 +1,7 @@
 from fastapi import HTTPException, status, Depends, APIRouter, Request
 from fastapi.security.oauth2 import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
+from sqlalchemy import and_
 from app.database.connection import get_db
 import app.models as models
 import app.schemas as schemas
@@ -157,7 +157,7 @@ def register_user(user_credentials: schemas.RegisterInput, db: Session = Depends
     hashed_password = utils.hash_password(user_credentials.password)
     user_credentials.password = hashed_password
     
-    code_response = email_utils.send_email(db, user_credentials.email)
+    code_response = email_utils.send_auth_code(db, user_credentials.email)
     if code_response.get("status") == "error":
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
                              detail=schemas.ErrorDetails(type="Register",
@@ -284,7 +284,7 @@ def refresh_code(email_refresh: schemas.CodeValidationInput, db: Session = Depen
             ).model_dump()
         )
     
-    code_response = email_utils.resend_email(db, email_refresh.code)
+    code_response = email_utils.resend_aut_code(db, email_refresh.code)
     
     if code_response.get("status") == "error":
         raise HTTPException(
@@ -348,7 +348,7 @@ def password_recovery_code(user_credentials: schemas.RecoveryCodeInput, db: Sess
                                                         message="User not found",
                                                         details=None).model_dump())
     
-    code_response = email_utils.send_email(db, user_credentials.email, 1)
+    code_response = email_utils.send_auth_code(db, user_credentials.email, 1)
     if code_response.get("status") == "error":
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
                              detail=schemas.ErrorDetails(type="RecoveryCode",

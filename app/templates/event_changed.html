@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upcoming Event Details</title> <!-- Updated title with new emoji -->
+    <style>
+        /* General Styles */
+        body, table, td {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+        img {
+            border: 0;
+        }
+        h1 {
+            color: #333;
+            font-size: 24px;
+            margin-bottom: 15px;
+        }
+        p {
+            color: #555;
+            font-size: 16px;
+            line-height: 1.5;
+            margin-bottom: 20px;
+        }
+        .changes {
+            text-align: left;
+            font-size: 16px;
+            color: #444;
+            margin: 15px 0;
+        }
+        .changes ul {
+            list-style-type: disc;
+            margin: 10px 0 10px 20px;
+            padding: 0;
+        }
+        .changes li {
+            margin: 5px 0;
+        }
+        .action-button {
+            display: inline-block;
+            padding: 10px 20px;
+            font-size: 16px;
+            color: #ffffff;
+            background-color: #798694;
+            border: none;
+            border-radius: 5px;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .action-button:hover {
+            background-color: #0056b3;
+        }
+        footer p {
+            font-size: 12px;
+            color: #888;
+            margin-top: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .header img {
+            max-width: 150px;
+            margin-right: 15px;
+        }
+        .company-name {
+            font-size: 22px;
+            font-weight: bold;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f4f9; padding: 20px;">
+        <tr>
+            <td>
+                <!-- Main Container -->
+                <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); max-width: 600px; margin: 0 auto;">
+                    <tr>
+                        <!-- Header with Logo and Company Name -->
+                        <td class="header" style="background-color: #007bff; color: #ffffff; padding: 20px; text-align: center;">
+                            <!-- Company Name -->
+                            <div class="company-name" style="font-size: 24px; font-weight: bold;">Yoonic</div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 30px 20px;">
+                            <h1 style="font-size: 24px; color: #333;">Activity Updated!</h1>
+                            <p style="font-size: 16px; color: #333;">
+                                Hi ${user_name},
+                            </p>
+                            <p style="font-size: 16px; color: #333;">
+                                We have important updates regarding your upcoming activity. Below are the details of the changes:
+                            </p>
+                            <div class="changes">
+                                <ul style="font-size: 16px; color: #333;">
+                                    ${event_details}
+                                </ul>
+                            </div>
+                            <p style="font-size: 16px; color: #333;">
+                                For more information, you can contact the event owner via the app.
+                            </p>
+                            <p style="font-size: 16px; color: #333;">
+                                Best regards, <br> Yoonic Management Team.
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="text-align: center; padding: 20px;">
+                            <footer style="font-size: 14px; color: #777;">
+                                <p>&copy; 2024 Yoonic. All rights reserved.</p>
+                            </footer>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

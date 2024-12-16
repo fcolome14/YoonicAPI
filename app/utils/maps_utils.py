@@ -58,6 +58,8 @@ async def fetch_reverse_geocode_data(lat: float, lon: float):
             fetched_data = response.json()
             if not fetched_data:
                 return {"status": "error", "details": "Site not found"}
+            if fetched_data.get("error"):
+                return {"status": "error", "details": fetched_data.get("error")}
             
             lat = fetched_data.get("lat")
             lon = fetched_data.get("lon")

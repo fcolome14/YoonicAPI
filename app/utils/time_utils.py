@@ -202,5 +202,19 @@ def set_week_days(start: datetime, end: datetime, target_days: List[int]) -> Lis
         index += 1
         
     return result_dict
+
+def is_valid_datetime(date_string: str, format: str = "%Y-%m-%d %H:%M:%S.%f") -> bool:
+    """
+    Check if the given string can be parsed into a datetime using the specified format.
+    
+    :param date_string: The string to check.
+    :param format: The datetime format to match against. Defaults to "%Y-%m-%d %H:%M:%S.%f".
+    :return: True if valid, False otherwise.
+    """
+    try:
+        datetime.strptime(date_string, format)
+        return True
+    except ValueError:
+        return False
          
 

@@ -48,3 +48,17 @@ class EventLines(BaseModel):
     isPublic: bool
     capacity: Optional[int] = 0
     invited: Optional[List[int]] = None
+
+class UpdateDetails(BaseModel):
+    
+    field: str
+    value: Any
+
+class UpdateChanges(BaseModel):
+    
+    id: int
+    update: Optional[List[UpdateDetails]] = None
+
+class TableChanges(BaseModel):
+    table: int
+    changes: List[UpdateChanges]

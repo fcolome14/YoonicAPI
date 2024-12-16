@@ -1,9 +1,7 @@
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, Any, List, Union, Tuple
-from .bases import MetaData, ErrorDetails, EventLines
+from .bases import MetaData, ErrorDetails, EventLines, TableChanges
 from datetime import datetime
-from decimal import Decimal
-from enum import Enum
 
 
 #OUTPUTS
@@ -62,23 +60,9 @@ class NewPostInput(BaseModel):
     custom_lines: Optional[List[EventLines]] = None
     
 
-
 class UpdatePostInput(BaseModel):
     """ Update post """
-    id: int
-    notifyUsers: Optional[bool] = False
-    title: Optional[str] = None
-    description: Optional[str] = None
-    timezone: Optional[str] = None
-    start: Optional[datetime] = None
-    end: Optional[datetime] = None
-    location: Optional[Union[str, Tuple[float, float]]] = None
-    isPublic: Optional[bool] = None
-    category: Optional[int] = None
-    # tags: Optional[List[str]] = None
-    cost: Optional[Decimal] = 0
-    currency: Optional[Enum] = None
-    capacity: Optional[int] = None
+    tables: List[TableChanges]
     
 
     

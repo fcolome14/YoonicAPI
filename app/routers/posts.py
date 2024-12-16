@@ -1,15 +1,14 @@
 from fastapi import HTTPException, APIRouter, status, Depends, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc
-from sqlalchemy import func
 from app.database.connection import get_db
 import pytz
 from app.schemas import schemas
 from app.oauth2 import get_user_session
-from app.utils import time_utils, utils, maps_utils
+from app.utils import time_utils, maps_utils, email_utils
 import app.models as models
 from datetime import datetime
-from app.services.posting_service import PostService
+from app.services.posting_service import PostService, EventUpdateService
 from app.services.retrieve_service import RetrieveService
 
 router = APIRouter(prefix="/posts", tags=["Posts"])
@@ -44,7 +43,6 @@ async def create_post(
         }
     )
 
-    
 @router.get("/nearby-events", status_code=status.HTTP_200_OK, response_model=schemas.SuccessResponse)
 def nearby_events(lat: float, lon: float, radius: int = 10, unit: int = 0,
                   db: Session = Depends(get_db), request: Request = None, _: int = Depends(get_user_session)):
@@ -214,8 +212,7 @@ def get_event_details(event_id: int, lat: float, lon: float, radius: int = 10, u
         }
     )
 
-
-@router.delete("/owned-event", response_model=schemas.SuccessResponse)
+@router.delete("/delete-event", response_model=schemas.SuccessResponse)
 def delete_event(event_id: int, db: Session = Depends(get_db), request: Request = None, user_id: int = Depends(get_user_session)):
     
     fetched_posts = db.query(models.Events).filter(and_(models.Events.owner_id == user_id, models.Events.id == event_id)).first()
@@ -245,30 +242,33 @@ def delete_event(event_id: int, db: Session = Depends(get_db), request: Request 
         }
     )
 
-@router.put("/owned-event", response_model=schemas.SuccessResponse, status_code=status.HTTP_200_OK)
-def update_event(updated_data: schemas.UpdatePostInput, db: Session = Depends(get_db), request: Request = None, user_id: int = Depends(get_user_session)):
+@router.put("/update-event", response_model=schemas.SuccessResponse, status_code=status.HTTP_200_OK)
+async def update_event(updated_data: schemas.UpdatePostInput, db: Session = Depends(get_db), request: Request = None, user_id: int = Depends(get_user_session)):
     
-    result = utils.update_post_data(user_id=user_id, update_data=updated_data, db=db)
+    raw_changes = await PostService.update_post_data(user_id=user_id, update_data=updated_data, db=db)
     
-    if result.get("status") == "error":
+    if raw_changes.get("status") == "error":
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
             detail=schemas.ErrorDetails(
                 type="UpdatePost",
-                message=result.get("details"),
+                message=raw_changes.get("details"),
                 details=None
             ).model_dump()
         )
-        
-    applied_changes = result.get("details")
-    if updated_data.notifyUsers:
-        #SEND EMAIL TO ALL USERS SUBS TO WARN THEM OF THE CHANGES
-        pass
+    
+    filtered_changes = EventUpdateService.group_changes_by_event(raw_changes)
+    result_email = {}
+    if len(filtered_changes) > 0:
+        message = "Sent event update email"
+        result_email = email_utils.send_updated_events(db, user_id, filtered_changes)
+    else:
+        message = "Event unchanged. Email not sent"    
     
     return schemas.SuccessResponse(
         status="success",
-        message="Event updated successfully",
-        data=applied_changes,
+        message=message,
+        data=result_email,
         meta={
             "request_id": request.headers.get("request-id", "default_request_id"),
             "client": request.headers.get("client-type", "unknown"),

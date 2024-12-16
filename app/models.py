@@ -86,8 +86,9 @@ class EventsHeaders(Base):
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text('now()'))
     geom = Column(Geometry("POINT"), nullable=True)
     
-    user = relationship("Users", backref="events_headesrs")
+    user = relationship("Users", backref="events_headers")
     cat = relationship("Categories", backref="events_headers")
+    events_lines = relationship("EventsLines", back_populates="header", cascade="all, delete-orphan")
 
 class EventsLines(Base):
     
@@ -101,6 +102,6 @@ class EventsLines(Base):
     capacity = Column(Integer, nullable=True)
     isPublic = Column(Boolean, nullable=False, default=True)
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text('now()'))
-    header_id = Column(Integer, ForeignKey("events_headers.id"))
+    header_id = Column(Integer, ForeignKey("events_headers.id", ondelete="CASCADE"), nullable=False)
     
-    header = relationship("EventsHeaders", backref="events_lines")
+    header = relationship("EventsHeaders", back_populates="events_lines")

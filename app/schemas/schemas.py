@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, Any, List, Union, Tuple
-from .bases import MetaData, ErrorDetails, EventLines, TableChanges
+from .bases import MetaData, ErrorDetails, EventLines, TableChanges, Deletes
 from datetime import datetime
 
 
@@ -63,6 +63,11 @@ class NewPostInput(BaseModel):
 class UpdatePostInput(BaseModel):
     """ Update post """
     tables: List[TableChanges]
+
+class DeletePostInput(BaseModel):
+    """ Delete post """
+    table: int
+    deletes: List[Deletes]
     
 
     

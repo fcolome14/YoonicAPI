@@ -169,7 +169,7 @@ class RetrieveService:
 
                     if data.get("header"):
                         html_content += "<h4 style='color: #e76f51;'>What's new:</h4><ul style='list-style-type: none; padding-left: 1em;'>"
-                        for idx, header_change in enumerate(data["header"]):
+                        for _, header_change in enumerate(data["header"]):
                             field = header_change.get("field")
                             old_value = header_change.get("old_value")
                             new_value = header_change.get("new_value")

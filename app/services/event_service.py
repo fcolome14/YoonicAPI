@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 from typing import List, Union
 from app.models import EventsLines, EventsHeaders, Rates
-from app.schemas import NewPostInput, RateDetails
+from app.schemas import NewPostInput, RateDetails, DeletePostInput
 from app.schemas.bases import UpdateChanges
 from app.services.repeater_service import select_repeater, select_repeater_custom
 from app.services.rate_service import RateService, pack_rates
@@ -495,3 +495,48 @@ class EventUpdateService:
                         })
         return relevant_changes
 
+class EventDeleteService:
+    @staticmethod
+    def delete_events(db: Session, delete_input: DeletePostInput, user_id: int):
+        delete_ids = [item.id for item in delete_input.deletes]
+        if delete_input.table == 0:
+            fetched_records = db.query(EventsHeaders).filter(and_(EventsHeaders.id.in_(delete_ids), EventsHeaders.owner_id == user_id)).all()
+            if not fetched_records:
+                return {"status": "error", "details": "Header record not found"}
+            for header in fetched_records:
+                db.delete(header)
+            db.commit()
+            return {"status": "success", "details": f"Headers {delete_ids} deleted" if len(delete_ids) > 1 else f"Header {delete_ids} deleted"}
+        
+        elif delete_input.table == 1:
+            fetched_records_with_header = db.query(EventsLines, EventsHeaders).join(
+                EventsHeaders).filter(
+                EventsLines.id.in_(delete_ids), EventsHeaders.owner_id == user_id).all()
+                
+            if not fetched_records_with_header:
+                return {"status": "error", "details": "Lines record not found"}
+            
+            lines_to_delete = [line for line, _ in fetched_records_with_header] #(HEADER, LINE)
+            for line in lines_to_delete:
+                db.delete(line)
+            db.commit()
+            return {"status": "success", "details": f"Lines {delete_ids} deleted" if len(delete_ids) > 1 else f"Line {delete_ids} deleted"}
+        
+        fetched_records_with_header = db.query(Rates, EventsLines, EventsHeaders).join(
+            EventsLines, EventsLines.header_id == EventsHeaders.id
+        ).join(
+            Rates, Rates.line_id == EventsLines.id
+        ).filter(
+            Rates.id.in_(delete_ids),
+            EventsHeaders.owner_id == user_id
+        ).all()
+
+        if not fetched_records_with_header:
+            return {"status": "error", "details": "Rates records not found"}
+        
+        lines_to_delete = [rate for rate, _, _ in fetched_records_with_header] #(RATES, LINE, HEADER)
+        for line in lines_to_delete:
+            db.delete(line)
+        db.commit()
+        return {"status": "success", "details": f"Rates {delete_ids} deleted" if len(delete_ids) > 1 else f"Rate {delete_ids} deleted"}
+        

@@ -10,6 +10,7 @@ import app.models as models
 from datetime import datetime
 from app.services.posting_service import PostService, EventUpdateService
 from app.services.retrieve_service import RetrieveService
+from app.services.event_service import EventDeleteService
 
 router = APIRouter(prefix="/posts", tags=["Posts"])
 utc = pytz.UTC
@@ -133,7 +134,7 @@ def owned_events(lat: float, lon: float, db: Session = Depends(get_db), request:
         }
     )
 
-@router.get("/event_details", status_code=status.HTTP_200_OK, response_model=schemas.SuccessResponse)
+@router.get("/event-details", status_code=status.HTTP_200_OK, response_model=schemas.SuccessResponse)
 def get_event_details(event_id: int, lat: float, lon: float, radius: int = 10, unit: int = 0, 
                       db: Session = Depends(get_db), request: Request = None, _: int = Depends(get_user_session)):
     
@@ -213,28 +214,24 @@ def get_event_details(event_id: int, lat: float, lon: float, radius: int = 10, u
     )
 
 @router.delete("/delete-event", response_model=schemas.SuccessResponse)
-def delete_event(event_id: int, db: Session = Depends(get_db), request: Request = None, user_id: int = Depends(get_user_session)):
+def delete_event(delete_data: schemas.DeletePostInput, db: Session = Depends(get_db), request: Request = None, user_id: int = Depends(get_user_session)):
     
-    fetched_posts = db.query(models.Events).filter(and_(models.Events.owner_id == user_id, models.Events.id == event_id)).first()
+    result = EventDeleteService.delete_events(db, delete_data, user_id)
     
-    if not fetched_posts:
+    if result.get("status") == "error":
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, 
             detail=schemas.ErrorDetails(
                 type="DeletionPost",
-                message="Event not found",
+                message=result.get("details"),
                 details=None
             ).model_dump()
         )
     
-    db.delete(fetched_posts)
-    db.commit()
-    
     #NOTIFY SUBS USERS VIA EMAIL THAT THE EVENT HAS BEEN REMOVED
-
     return schemas.SuccessResponse(
         status="success",
-        message="Deleted event successfully",
+        message=result.get("details"),
         data={},
         meta={
             "request_id": request.headers.get("request-id", "default_request_id"),

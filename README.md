@@ -102,14 +102,14 @@ When creating a new post you must consider the following flags setup:
 | **repeat** 	| False 	| True 	| False 	| True 	| False 	| True 	|
 | **custom_option_selected** 	| False 	| False 	| True 	| True 	| True 	| True 	|
 | **custom_each_day** 	| False 	| False 	| False 	| False 	| True 	| True 	|
-| **line (type)** 	| <line> 	| <line> 	| <line> 	| <line> 	| List[<line>] 	| List[<line>] 	|
+| **line (type)** 	| Line	| Line	| Line 	| Line 	| List[Line] 	| List[Line] 	|
 
 (*) Only for repeated posts, the frequency and period can be defined tunning the number of "occurrences" and:
 
-| Repeat every ("when_to") 	| 0 	| 1 	| 2 	| 3 	| 4 	|
-|---	|---	|---	|---	|---	|---	|---	|---	|---	|
-| custom_option_selected: False 	| Day 	| Week 	| Month 	| Weekday 	| Weekend 	|
-| custom_option_selected: True 	| Week 	| Month 	| Year 	| - 	| - 	|
+| Repeat every ("when_to")           | 0    | 1    | 2     | 3      | 4      |
+|------------------------------------|------|------|-------|--------|--------|
+| custom_option_selected: False      | Day  | Week | Month | Weekday| Weekend|
+| custom_option_selected: True       | Week | Month| Year  | -      | -      |
 
 Only when using custom mode with "custom_each_day" flag set to False:
 

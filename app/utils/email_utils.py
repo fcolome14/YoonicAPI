@@ -81,11 +81,12 @@ def send_updated_events(db: Session, user_id: int, changes: dict):
 
     name = user[1].split(" ")
     name = name[0] if len(name) > 1 else name
+    logo = f'{settings.domain}/static/assets/images/logo_color.png'
     event_details = ""
     event_details = RetrieveService.generate_event_changes_html(db, changes, user_id)
 
     template = Template(template_content)
-    html_content = template.substitute(user_name=name, event_details=event_details)
+    html_content = template.substitute(user_name=name, event_details=event_details, logo=logo)
     
     response = send_email(user[0], subject, html_content)
     if not response or response.get("status") == "error":
@@ -128,7 +129,7 @@ def send_email(email: str, subject: str, html_content: str):
     except Exception as e:
         return {"status": "error", "message": f"An unexpected error occurred: {str(e)}"}
     
-def resend_aut_code(db: Session, code: int):
+def resend_auth_code(db: Session, code: int):
     response = db.query(models.Users).filter(and_(models.Users.code == code)).first()  # noqa: E712
 
     if response:

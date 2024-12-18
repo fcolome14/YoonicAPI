@@ -3,7 +3,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import time
 from app.config import settings
-from app.database.seed import seed_data
+from app.database.seed import Seed
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import users, auth, posts, legal, recall
 import firebase_admin
@@ -13,9 +13,15 @@ from app.exception_handlers import custom_http_exception_handler
 from fastapi.exceptions import HTTPException
 from geopy.geocoders import Nominatim
 from app.database.connection import get_db
+from app.rate_limit import limiter, rate_limit_handler
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi.errors import RateLimitExceeded
 
 app = FastAPI()
 client = Nominatim(user_agent=settings.user_agent)
+
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
 
 app.mount("/static", StaticFiles(directory="app/templates"), name="static")
 templates = Jinja2Templates(directory="app/templates")
@@ -36,9 +42,10 @@ app.add_middleware(
 @app.on_event("startup")
 async def seed_database():
     db = next(get_db())
-    seed_data.seed_data(db)
+    Seed.seed_data(db)
 
 app.add_exception_handler(HTTPException, custom_http_exception_handler)
+app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 
 while True:
     try:

@@ -59,6 +59,10 @@ class UpdateChanges(BaseModel):
     id: int
     update: Optional[List[UpdateDetails]] = None
 
+class Deletes(BaseModel):
+    
+    id: int
+
 class TableChanges(BaseModel):
     table: int
     changes: List[UpdateChanges]

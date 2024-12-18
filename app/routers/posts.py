@@ -128,7 +128,7 @@ def get_event_details(event_id: int, lat: float, lon: float, radius: int = 10, u
         message="Event and suggested events",
         data={
             "selected_event": selected_event,
-            "total_related_events": len(selected_event),
+            "total_related_events": len(related_events),
             "related_events": related_events
         },
         meta={

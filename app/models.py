@@ -81,14 +81,17 @@ class EventsHeaders(Base):
     coordinates = Column(String, nullable=False)
     img = Column(String, nullable=True)
     img2 = Column(String, nullable=True)
-    owner_id = Column(Integer, ForeignKey("users.id"))
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
     category = Column(Integer, ForeignKey("cat.id"))
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text('now()'))
     geom = Column(Geometry("POINT"), nullable=True)
+    status = Column(Integer, ForeignKey("status_codes.id"), nullable=False)
+    score = Column(Integer, nullable=False, default=0)
     
     user = relationship("Users", backref="events_headers")
     cat = relationship("Categories", backref="events_headers")
     events_lines = relationship("EventsLines", back_populates="header", cascade="all, delete-orphan")
+    status_codes = relationship("StatusCodes", backref="events_headers")
 
 class EventsLines(Base):
     
@@ -105,3 +108,34 @@ class EventsLines(Base):
     header_id = Column(Integer, ForeignKey("events_headers.id", ondelete="CASCADE"), nullable=False)
     
     header = relationship("EventsHeaders", back_populates="events_lines")
+
+class StatusCodes(Base):
+    """ Status codes table model """
+    
+    __tablename__ = "status_codes"
+    
+    id = Column(Integer, primary_key=True, nullable=False, autoincrement=True)
+    name = Column(String, nullable=True)
+    created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text('now()'))
+    
+class Subcategories(Base):
+    """ Subcategory table model """
+    
+    __tablename__ = "subcat"
+    
+    id = Column(Integer, primary_key=True, nullable=False, autoincrement=True)
+    name = Column(String, nullable=False)
+    code = Column(String, nullable=False)
+    cat = Column(Integer, nullable=False)
+    created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text('now()'))
+
+class Tags(Base):
+    """ Tags table model """
+    
+    __tablename__ = "tags"
+    
+    id = Column(Integer, primary_key=True, nullable=False, autoincrement=True)
+    name = Column(String, nullable=False)
+    subcat = Column(Integer, nullable=False)
+    weight = Column(Integer, nullable=False, default=1)
+    created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text('now()'))

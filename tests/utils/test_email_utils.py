@@ -49,16 +49,16 @@ class TestEmailUtils:
             email_utils.is_email_taken(mock_db_session, fetched_email)
     
 
-    def test_send_email_success(self, mocker: MockerFixture, mock_db_session):
-        """ Test code success email sending """
+    def test_send_auth_code_success(self, mocker: MockerFixture, mock_db_session):
+        """ Test auth code email sending success """
         
         mock_response = {
             "status": "success",
             "message": 123456
         }
 
-        mock_send_email = mocker.patch("app.utils.email_utils.send_email", return_value=mock_response)
-        result = email_utils.send_email(mock_db_session, "test@example.com")
+        mock_send_email = mocker.patch("app.utils.email_utils.send_auth_code", return_value=mock_response)
+        result = email_utils.send_auth_code(mock_db_session, "test@example.com")
         assert result == mock_response
         
         mock_send_email.assert_called_once_with(mock_db_session, "test@example.com")
@@ -74,7 +74,7 @@ class TestEmailUtils:
         (0, {"status": "error", "message": "An unexpected error occurred: "}, Exception),
     ])
     
-    def test_send_email_exceptions(self, mocker: MockerFixture, mock_db_session, template, expected_error, side_effect):
+    def test_send_auth_code_exceptions(self, mocker: MockerFixture, mock_db_session, template, expected_error, side_effect):
         """ Test code email sending exceptions """
 
         mocker.patch("os.getcwd", return_value="../../app/templates")
@@ -93,12 +93,12 @@ class TestEmailUtils:
         mock_smtp.return_value = mock_smtp_instance
         mock_smtp_instance.starttls.side_effect = side_effect
 
-        result = email_utils.send_email(db=mock_db_session, email="test@example.com", template=template)
+        result = email_utils.send_auth_code(db=mock_db_session, email="test@example.com", template=template)
 
         assert result == expected_error
         
         
-    def test_resend_email_success(self, mocker: MockerFixture, mock_db_session):
+    def test_resend_auth_code_success(self, mocker: MockerFixture, mock_db_session):
         """ Test success code email re-sending """
         
         mock_user = models.Users(
@@ -117,9 +117,9 @@ class TestEmailUtils:
         expected_output = {"status": "success", "new_code": mock_user.code, "user": mock_user}
 
         mock_db_session.query().filter().first.return_value = mock_user
-        mocker.patch("app.utils.email_utils.send_email", return_value=mock_response)
+        mocker.patch("app.utils.email_utils.send_auth_code", return_value=mock_response)
         
-        result = email_utils.resend_email(mock_db_session, mock_user.code)
+        result = email_utils.resend_auth_code(mock_db_session, mock_user.code)
         
         assert result == expected_output
     
@@ -153,7 +153,7 @@ class TestEmailUtils:
          ),
         
         ])
-    def test_resend_email_errors(self, mocker: MockerFixture, mock_db_session, mock_user, mock_send_email):
+    def test_resend_auth_code_errors(self, mocker: MockerFixture, mock_db_session, mock_user, mock_send_email):
         """ Test errors in code email re-sending """
 
         if not mock_user:
@@ -161,9 +161,9 @@ class TestEmailUtils:
         expected_output = {"status": "error", "message": mock_send_email.get("message")}
 
         mock_db_session.query().filter().first.return_value = mock_user
-        mocker.patch("app.utils.email_utils.send_email", return_value=mock_send_email)
+        mocker.patch("app.utils.email_utils.send_auth_code", return_value=mock_send_email)
         
-        result = email_utils.resend_email(mock_db_session, mock_user.code)
+        result = email_utils.resend_auth_code(mock_db_session, mock_user.code)
         
         assert result == expected_output
         

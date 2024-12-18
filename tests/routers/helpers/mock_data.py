@@ -8,7 +8,7 @@ def create_mock_rate(single=True):
     Create a mock rate. If `single` is False, return a list of rates.
     """
     rate = bases.RateDetails(
-        title="",
+        title="Rate Test",
         amount=33.5,
         currency="EUR"
     )
@@ -16,7 +16,7 @@ def create_mock_rate(single=True):
 
 def create_mock_line(rate, custom_each_day: bool):
     """
-    Create a mock line. If `single` is False, return a list of lines.
+    Create a mock line. If `custom_each_day` is False, return a list of lines.
     """
     line = schemas.EventLines(
         start=datetime.now(timezone.utc),

@@ -284,7 +284,7 @@ def refresh_code(email_refresh: schemas.CodeValidationInput, db: Session = Depen
             ).model_dump()
         )
     
-    code_response = email_utils.resend_aut_code(db, email_refresh.code)
+    code_response = email_utils.resend_auth_code(db, email_refresh.code)
     
     if code_response.get("status") == "error":
         raise HTTPException(

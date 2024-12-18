@@ -129,7 +129,7 @@ def send_email(email: str, subject: str, html_content: str):
     except Exception as e:
         return {"status": "error", "message": f"An unexpected error occurred: {str(e)}"}
     
-def resend_aut_code(db: Session, code: int):
+def resend_auth_code(db: Session, code: int):
     response = db.query(models.Users).filter(and_(models.Users.code == code)).first()  # noqa: E712
 
     if response:

@@ -125,13 +125,13 @@ class RetrieveService:
         selected_event_lines = db.query(models.EventsLines).filter(and_(models.EventsLines.header_id == selected_header_id)).all()
         
         events_within_area, reference_point = RetrieveService.get_events_within_area(db, lat, lon, radius, unit)
-        if events_within_area.get("status") == "error":
-            return {"status": "error", "details": events_within_area.get("details")}
-        
         current_event = RetrieveService.generate_nearby_events_structure(db, [selected_event_header], selected_event_lines, reference_point, unit)
-        nearby_header, _ = events_within_area.get("details")
-        nearby_related_headers = [header for header in nearby_header if header.category == selected_event_header.category and header.id != selected_header_id]
-        related_events = RetrieveService.generate_nearby_events_structure(db, nearby_related_headers, [], reference_point, unit)
+        if events_within_area.get("status") == "error":
+            related_events = []
+        else:
+            nearby_header, _ = events_within_area.get("details")
+            nearby_related_headers = [header for header in nearby_header if header.category == selected_event_header.category and header.id != selected_header_id]
+            related_events = RetrieveService.generate_nearby_events_structure(db, nearby_related_headers, [], reference_point, unit)
 
         return current_event, related_events
     
@@ -257,7 +257,7 @@ class RetrieveService:
         """
         return html_content
 
-
+    @staticmethod
     def get_events_within_area(db: Session, lat: float, lon: float, radius: int = 10, unit: int = 0) -> (dict, List[float]): # type: ignore
         reference_point = [lat, lon]
         area = maps_utils.get_bounding_area(point=reference_point, radius=radius, units=unit)

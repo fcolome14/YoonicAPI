@@ -16,7 +16,7 @@ from app.utils import time_utils
 NOMINATIM_BASE_URL = settings.nominatim_base_url
 USER_AGENT = settings.user_agent
 
-async def fetch_geocode_data(address: str):
+async def fetch_geocode_data(address: str, suggestion_mode: bool = False):
     """
     Fetch geocode data from address to coordinates.
     """
@@ -33,6 +33,10 @@ async def fetch_geocode_data(address: str):
             fetched_data = response.json()
             if not fetched_data:
                 return {"status": "error", "details": "Site not found"}
+            
+            elif suggestion_mode:
+                suggestions = [item.get("display_name") for item in fetched_data[:5]]
+                return {"status": "success", "address": suggestions}
             
             lat = fetched_data[0].get("lat")
             lon = fetched_data[0].get("lon")
@@ -99,7 +103,6 @@ def get_bounding_area(point: list[float], radius: int, units: int = 0) -> dict:
     
     
 def get_within_events(area: dict, lat: float, lon: float, db: Session = Depends(get_db)):
-    
     user_tz = pytz.timezone(time_utils.get_timezone_by_coordinates(lat, lon))
     current_time_utc = datetime.now(pytz.utc)
     current_time_user_tz = current_time_utc.astimezone(user_tz)
@@ -107,23 +110,27 @@ def get_within_events(area: dict, lat: float, lon: float, db: Session = Depends(
     bounding_box = func.ST_MakeEnvelope(
         area.get("min_lon"), area.get("min_lat"), area.get("max_lon"), area.get("max_lat"), 4326
     )
-    
-    headers = db.query(models.EventsHeaders).filter(func.ST_Within(models.EventsHeaders.geom, bounding_box)).all()
-    headers_id = [header.id for header in headers]
 
-    if not headers:
-        return {"status": "error", "details": "Event not found. Increase the range"}
-
-    lines = db.query(models.EventsLines).filter(
-        and_(
-            models.EventsLines.header_id.in_(headers_id),
-            models.EventsLines.end > current_time_user_tz
+    results = (
+        db.query(models.EventsHeaders, models.EventsLines)
+        .join(
+            models.EventsLines,
+            and_(
+                models.EventsLines.header_id == models.EventsHeaders.id,
+                models.EventsLines.end > current_time_user_tz,
+                models.EventsLines.isPublic == True  # noqa: E712
+            )
         )
-    ).all()
+        .filter(func.ST_Within(models.EventsHeaders.geom, bounding_box))
+        .all()
+    )
     
-    if not lines:
-        return {"status": "error", "details": "Empty event"}
-        
+    if not results:
+        return {"status": "error", "details": "Event not found or empty event"}
+
+    headers, lines = [result[0] for result in results], [result[1] for result in results]
+
+    #return {"status": "success", "details": {"headers": headers, "lines": lines}}
     return {"status": "success", "details": (headers, lines)}
 
 def compute_distance(pointA: tuple, pointB: tuple, units: int = 0) -> float:

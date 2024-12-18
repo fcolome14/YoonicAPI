@@ -156,7 +156,7 @@ class TestAuth:
         mocker.patch("app.routers.auth.utils.is_account_unverified", return_value=None)
         mocker.patch("app.routers.auth.utils.is_username_email_taken", return_value=None)
         mocker.patch("app.routers.auth.utils.is_password_strong", return_value=True)
-        mocker.patch("app.routers.auth.email_utils.send_email", return_value={"status": "success", "message": 123456})
+        mocker.patch("app.routers.auth.email_utils.send_auth_code", return_value={"status": "success", "message": 123456})
         mock_hashed_password = "hashed_testpassword"
         mocker.patch("app.routers.auth.utils.hash_password", return_value=mock_hashed_password)
         
@@ -204,7 +204,8 @@ class TestAuth:
              ),
             
             (schemas.RegisterInput(username="testuser", full_name="Test User", email="testuser@example.com", password="testpassword123"),
-             "email_utils.send_email", {"status": "error", "message": "SMTP error occurred: Example_error"}, "SMTP error occurred: Example_error", "Sending validation email"
+             "email_utils.send_auth_code", {"status": "error", "message": "Email verification code template not found"}, "Email verification code template not found", 
+             "Sending validation email"
              ),
         ]
     )
@@ -218,7 +219,7 @@ class TestAuth:
         mocker.patch("app.routers.auth.utils.is_account_unverified", return_value=None)
         mocker.patch("app.routers.auth.utils.is_username_email_taken", return_value=False)
         mocker.patch("app.routers.auth.utils.is_password_strong", return_value=True)
-        mocker.patch("app.routers.auth.email_utils.send_email", return_value={"status": "success", "message": 123456})
+        mocker.patch("app.routers.auth.email_utils.send_auth_code", return_value={"status": "success", "message": 123456})
         
         mocker.patch(f"app.routers.auth.{mocked_function}", return_value=mock_value)
         
@@ -368,7 +369,7 @@ class TestAuth:
         
         mock_value = {"status": "success", "new_code": user.code, "user": user}
         mocker.patch("app.routers.auth.utils.is_code_expired", return_value=False)
-        mocker.patch("app.routers.auth.email_utils.resend_email", return_value=mock_value)
+        mocker.patch("app.routers.auth.email_utils.resend_auth_code", return_value=mock_value)
         
         expected_output = schemas.SuccessResponse(
             status="success",
@@ -381,7 +382,6 @@ class TestAuth:
         )
 
         response = refresh_code(db_session, mock_request, mock_request)
-        print(response)
         
         assert response == expected_output
             
@@ -403,7 +403,7 @@ class TestAuth:
             db_session.query().filter().first.return_value = None
         fetched_data = schemas.CodeValidationInput(code=123456, email=user.email)
         mocker.patch("app.routers.auth.utils.is_code_expired", return_value=mock_is_code_expired)
-        mocker.patch("app.routers.auth.email_utils.resend_email", return_value={"status": "error", "message": message})
+        mocker.patch("app.routers.auth.email_utils.resend_auth_code", return_value={"status": "error", "message": message})
 
         expected_error = {
                 "status": "error",
@@ -426,9 +426,6 @@ class TestAuth:
         error_body = error_output.body.decode("utf-8")
         error_response = json.loads(error_body)
         
-        print(expected_error)
-        print(error_response)
-        
         assert error_response == expected_error
         
     def test_password_recovery_code_succeed(self, mocker: MockerFixture, mock_db_session, mock_request):
@@ -439,7 +436,7 @@ class TestAuth:
         
         mock_value = {"status": "success", "message": user.code}
         db_session.query().filter().first.return_value = user
-        mocker.patch("app.routers.auth.email_utils.send_email", return_value=mock_value)
+        mocker.patch("app.routers.auth.email_utils.send_auth_code", return_value=mock_value)
         
         expected_output = schemas.SuccessResponse(
             status="success",
@@ -468,7 +465,7 @@ class TestAuth:
         """ Password recovery test raised exceptions """
         
         db_session, _ = mock_db_session
-        mocker.patch("app.routers.auth.email_utils.send_email", return_value=mock_value)
+        mocker.patch("app.routers.auth.email_utils.send_auth_code", return_value=mock_value)
         
         expected_error = {
             "status": "error",

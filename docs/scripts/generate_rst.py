@@ -10,4 +10,5 @@ Usage:
 Requirements:
     - Ensure the `docs/source` directory exists.
 """
-#TODO: FINISH SCRIPT
+
+# TODO: FINISH SCRIPT

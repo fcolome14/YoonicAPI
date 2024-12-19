@@ -1,49 +1,70 @@
+from enum import IntEnum
+
+from sqlalchemy import and_, desc, func, or_
 from sqlalchemy.orm import Session
-from app.schemas import NewPostInput, UpdatePostInput
-from app.models import EventsHeaders
+
+from app.models import Categories, EventsHeaders
+from app.schemas import NewPostHeaderInput, UpdatePostInput
 from app.services.event_service import EventService, EventUpdateService
-from app.utils import utils, maps_utils
-from sqlalchemy import func
+from app.services.posting_header_service import PostingHeaderService
+from app.services.retrieve_service import RetrieveService
+from app.utils import maps_utils, utils
+
+
+class HeaderStatus(IntEnum):
+    NEW = 0
+    STAGING = 1
+    UNASSIGNED = -1
+
 
 class PostService:
     @staticmethod
-    async def create_post(db: Session, user_id: int, posting_data: NewPostInput):
-        # Geocoding
-        if utils.is_location_address(posting_data.location):
-            geodata = await maps_utils.fetch_geocode_data(address=posting_data.location)
-        else:
-            geodata = await maps_utils.fetch_reverse_geocode_data(
-                lat=posting_data.location[0], lon=posting_data.location[1]
+    async def process_header(
+        db: Session, user_id: int, posting_header: NewPostHeaderInput
+    ):
+
+        if (
+            posting_header.status == HeaderStatus.NEW
+            and posting_header.id == HeaderStatus.UNASSIGNED
+        ):
+            results = await PostingHeaderService._check_inputs(
+                db, user_id, posting_header
+            )
+            if results.get("status") == "error":
+                return results
+
+            point, address = results.get("details")[0], results.get("details")[1]
+            header = EventsHeaders(
+                title=posting_header.title,
+                description=posting_header.description,
+                address=address,
+                coordinates=f"{point[0]}, {point[1]}",
+                geom=func.ST_SetSRID(func.ST_Point(point[1], point[0]), 4326),
+                owner_id=user_id,
+                category=posting_header.category,
+                status=1,
+                score=0,  # DELETE FROM TABLE
             )
 
-        if geodata.get("status") == "error":
-            return {"status": "error", "details": geodata.get("details")}
+            db.add(header)
+            db.commit()
+            db.refresh(header)
+            header = RetrieveService.generate_header_structure(header)
+            return {"status": "success", "message": "Approved header", "header": header}
 
-        header = EventsHeaders(
-            title=posting_data.title,
-            description=posting_data.description,
-            address=geodata.get("address"),
-            coordinates=f'{geodata.get("point")[0]},{geodata.get("point")[1]}',
-            geom=func.ST_SetSRID(
-                func.ST_Point(geodata.get("point")[1], geodata.get("point")[0]), 4326
-            ),
-            owner_id=user_id,
-            category=posting_data.category,
-        )
+        elif posting_header.status == HeaderStatus.STAGING:
+            return {"status": "error", "details": "Header already approved"}
+        return {"status": "error", "details": "Status not allowed in this process"}
 
-        db.add(header)
-        db.commit()
-        db.refresh(header)
+        # result = EventService.generate_post_lines(db=db, posting_data=posting_data, header_id=header.id)
+        # if result.get("status") == "error":
+        #     return {"status": "error", "details": result.get("details")}
+        # return {"status": "success", "details": result.get("details")}
 
-        result = EventService.generate_post_lines(db=db, posting_data=posting_data, header_id=header.id)
-
-        if result.get("status") == "error":
-            return {"status": "error", "details": result.get("details")}
-
-        return {"status": "success", "details": result.get("details")}
-    
     @staticmethod
-    async def update_post_data(user_id: int, update_data: UpdatePostInput, db: Session) -> dict:
+    async def update_post_data(
+        user_id: int, update_data: UpdatePostInput, db: Session
+    ) -> dict:
         """Update post data if there are changes
 
         Args:
@@ -56,13 +77,19 @@ class PostService:
         """
         for item in update_data.tables:
             if item.table == 0:
-                update_header = await EventUpdateService._update_header(db, user_id, item.table, item.changes)
+                update_header = await EventUpdateService._update_header(
+                    db, user_id, item.table, item.changes
+                )
             elif item.table == 1:
-                update_lines = await EventUpdateService._update_lines(db, user_id, item.table, item.changes)
+                update_lines = await EventUpdateService._update_lines(
+                    db, user_id, item.table, item.changes
+                )
             elif item.table == 2:
-                update_rates = await EventUpdateService._update_rates(db, user_id, item.table, item.changes)
-                
-            
-        
-        return {"status": "success", "details": (update_header, update_lines, update_rates)}
+                update_rates = await EventUpdateService._update_rates(
+                    db, user_id, item.table, item.changes
+                )
 
+        return {
+            "status": "success",
+            "details": (update_header, update_lines, update_rates),
+        }

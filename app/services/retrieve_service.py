@@ -1,15 +1,24 @@
-from sqlalchemy.orm import Session
+from datetime import datetime
 from typing import List
+
+from sqlalchemy import and_
+from sqlalchemy.orm import Session
+
 import app.models as models
 from app.utils import maps_utils
-from datetime import datetime
-from sqlalchemy import and_
+
 
 class RetrieveService:
     @staticmethod
-    def generate_nearby_events_structure(db: Session, headers: List[models.EventsHeaders], lines: List[models.EventsLines], reference_point: List[float], unit: int = 0):
+    def generate_nearby_events_structure(
+        db: Session,
+        headers: List[models.EventsHeaders],
+        lines: List[models.EventsLines],
+        reference_point: List[float],
+        unit: int = 0,
+    ):
         event_data = []
-        
+
         for header in headers:
             if lines:
                 event_lines = [line for line in lines if line.header_id == header.id]
@@ -18,7 +27,7 @@ class RetrieveService:
                 event_coordinates = float(lat), float(lon)
             except ValueError:
                 event_coordinates = (0.0, 0.0)
-                
+
             event_dict = {
                 "id": header.id,
                 "title": header.title,
@@ -29,15 +38,17 @@ class RetrieveService:
                 "img2": header.img2,
                 "owner_id": header.owner_id,
                 "category": header.category,
-                "distance": maps_utils.compute_distance(reference_point, event_coordinates, unit),
+                "distance": maps_utils.compute_distance(
+                    reference_point, event_coordinates, unit
+                ),
                 "distance_unit": "km" if unit == 0 else "miles",
-                "schedule": []
+                "schedule": [],
             }
-            
+
             if not lines:
                 event_data.append(event_dict)
                 continue
-            
+
             for line in event_lines:
                 line_dict = {
                     "id": line.id,
@@ -46,8 +57,10 @@ class RetrieveService:
                     "capacity": line.capacity,
                     "isPublic": line.isPublic,
                 }
-                
-                rates = db.query(models.Rates).filter(models.Rates.line_id == line.id).all()
+
+                rates = (
+                    db.query(models.Rates).filter(models.Rates.line_id == line.id).all()
+                )
                 rate_details = []
                 for rate in rates:
                     rate_dict = {
@@ -57,18 +70,39 @@ class RetrieveService:
                         "amount": rate.amount,
                     }
                     rate_details.append(rate_dict)
-                
+
                 line_dict["rates"] = rate_details
                 event_dict["schedule"].append(line_dict)
-            
+
             event_data.append(event_dict)
 
         return event_data
-    
+
     @staticmethod
-    def generate_updated_events_structure(db: Session, headers: List[models.EventsHeaders], lines: List[models.EventsLines]):
+    def generate_header_structure(header: models.EventsHeaders):
+        event_dict = {
+            "id": header.id,
+            "title": header.title,
+            "description": header.description,
+            "address": header.address,
+            "coordinates": header.coordinates,
+            "img": header.img,
+            "img2": header.img2,
+            "owner_id": header.owner_id,
+            "category": header.category,
+            "status": header.status,
+        }
+
+        return event_dict
+
+    @staticmethod
+    def generate_updated_events_structure(
+        db: Session,
+        headers: List[models.EventsHeaders],
+        lines: List[models.EventsLines],
+    ):
         event_data = []
-        
+
         for header in headers:
             event_lines = [line for line in lines if line.header_id == header.id]
             event_dict = {
@@ -81,9 +115,9 @@ class RetrieveService:
                 "img2": header.img2,
                 "owner_id": header.owner_id,
                 "category": header.category,
-                "schedule": []
+                "schedule": [],
             }
-            
+
             for line in event_lines:
                 line_dict = {
                     "id": line.id,
@@ -92,8 +126,10 @@ class RetrieveService:
                     "capacity": line.capacity,
                     "isPublic": line.isPublic,
                 }
-                
-                rates = db.query(models.Rates).filter(models.Rates.line_id == line.id).all()
+
+                rates = (
+                    db.query(models.Rates).filter(models.Rates.line_id == line.id).all()
+                )
                 rate_details = []
                 for rate in rates:
                     rate_dict = {
@@ -103,38 +139,67 @@ class RetrieveService:
                         "amount": rate.amount,
                     }
                     rate_details.append(rate_dict)
-                
+
                 line_dict["rates"] = rate_details
                 event_dict["schedule"].append(line_dict)
-            
+
             event_data.append(event_dict)
 
         return event_data
-    
+
     @staticmethod
-    def generate_details_events_structure(db: Session, 
-                                          selected_header_id: models.EventsHeaders,
-                                          lat: float, 
-                                          lon: float, 
-                                          radius: float,
-                                          user_id: int,
-                                          unit: int = 0):
-        selected_event_header = db.query(models.EventsHeaders).filter(and_(models.EventsHeaders.id == selected_header_id, models.EventsHeaders.owner_id == user_id)).first()
+    def generate_details_events_structure(
+        db: Session,
+        selected_header_id: models.EventsHeaders,
+        lat: float,
+        lon: float,
+        radius: float,
+        user_id: int,
+        unit: int = 0,
+    ):
+        selected_event_header = (
+            db.query(models.EventsHeaders)
+            .filter(
+                and_(
+                    models.EventsHeaders.id == selected_header_id,
+                    models.EventsHeaders.owner_id == user_id,
+                )
+            )
+            .first()
+        )
         if not selected_event_header:
-            return {"status": "error", "details": "Event not found or user not authorized"}
-        selected_event_lines = db.query(models.EventsLines).filter(and_(models.EventsLines.header_id == selected_header_id)).all()
-        
-        events_within_area, reference_point = RetrieveService.get_events_within_area(db, lat, lon, radius, unit)
-        current_event = RetrieveService.generate_nearby_events_structure(db, [selected_event_header], selected_event_lines, reference_point, unit)
+            return {
+                "status": "error",
+                "details": "Event not found or user not authorized",
+            }
+        selected_event_lines = (
+            db.query(models.EventsLines)
+            .filter(and_(models.EventsLines.header_id == selected_header_id))
+            .all()
+        )
+
+        events_within_area, reference_point = RetrieveService.get_events_within_area(
+            db, lat, lon, radius, unit
+        )
+        current_event = RetrieveService.generate_nearby_events_structure(
+            db, [selected_event_header], selected_event_lines, reference_point, unit
+        )
         if events_within_area.get("status") == "error":
             related_events = []
         else:
             nearby_header, _ = events_within_area.get("details")
-            nearby_related_headers = [header for header in nearby_header if header.category == selected_event_header.category and header.id != selected_header_id]
-            related_events = RetrieveService.generate_nearby_events_structure(db, nearby_related_headers, [], reference_point, unit)
+            nearby_related_headers = [
+                header
+                for header in nearby_header
+                if header.category == selected_event_header.category
+                and header.id != selected_header_id
+            ]
+            related_events = RetrieveService.generate_nearby_events_structure(
+                db, nearby_related_headers, [], reference_point, unit
+            )
 
         return current_event, related_events
-    
+
     @staticmethod
     def generate_event_changes_html(db: Session, changes: dict, user_id: int):
         html_content = """
@@ -192,7 +257,16 @@ class RetrieveService:
             if isinstance(change_group, dict):
                 for header_id, data in change_group.items():
                     # Add Header Data
-                    header_data = db.query(models.EventsHeaders).filter(and_(models.EventsHeaders.owner_id == user_id, models.EventsHeaders.id == header_id)).first()
+                    header_data = (
+                        db.query(models.EventsHeaders)
+                        .filter(
+                            and_(
+                                models.EventsHeaders.owner_id == user_id,
+                                models.EventsHeaders.id == header_id,
+                            )
+                        )
+                        .first()
+                    )
                     html_content += f"<h3 style='color: #2a9d8f; margin-bottom: 0.5em;'>{header_data.title.upper()}</h3>"
                     html_content += f"<h4 style='color: #264653; margin-bottom: 1em;'>📍 {header_data.address}</h4>"
 
@@ -214,11 +288,22 @@ class RetrieveService:
                     # Add Lines Data
                     if data.get("lines"):
                         for record_id, line_data in data["lines"].items():
-                            lines_data = db.query(models.EventsLines).filter(and_(models.EventsLines.header_id == header_id, models.EventsLines.id == record_id)).first()
+                            lines_data = (
+                                db.query(models.EventsLines)
+                                .filter(
+                                    and_(
+                                        models.EventsLines.header_id == header_id,
+                                        models.EventsLines.id == record_id,
+                                    )
+                                )
+                                .first()
+                            )
                             if not lines_data:
                                 break
-                            formatted_start = lines_data.start.strftime('%B %d (%I:%M %p)')
-                            formatted_end = lines_data.end.strftime('%B %d (%I:%M %p)')
+                            formatted_start = lines_data.start.strftime(
+                                "%B %d (%I:%M %p)"
+                            )
+                            formatted_end = lines_data.end.strftime("%B %d (%I:%M %p)")
                             html_content += f"<h4 style='color: #2a9d8f; margin-top: 1em;'>📅 {formatted_start} - {formatted_end}</h4>"
 
                             if line_data.get("fields"):
@@ -229,8 +314,12 @@ class RetrieveService:
                                     new_value = field_change.get("new_value")
                                     if field == "start" or field == "end":
                                         emoji = "📅"
-                                        old_value = field_change.get("old_value").strftime('%B %d (%I:%M %p)')
-                                        new_value = field_change.get("new_value").strftime('%B %d (%I:%M %p)')
+                                        old_value = field_change.get(
+                                            "old_value"
+                                        ).strftime("%B %d (%I:%M %p)")
+                                        new_value = field_change.get(
+                                            "new_value"
+                                        ).strftime("%B %d (%I:%M %p)")
                                     else:
                                         emoji = "🔄"
                                     html_content += f"<li class='line-item' style='margin-bottom: 0.5em;'> {emoji} <strong style='color: #f4a261;'>{field.capitalize()}:</strong> '<span style='color: #e63946;'>{old_value}</span>' &rarr; '<span style='color: #2a9d8f;'>{new_value}</span>'</li>"
@@ -244,8 +333,12 @@ class RetrieveService:
                                     rate_id = rate_change.get("rate_id")
                                     field = rate_change.get("field")
                                     if rate_id != new_rate_id:
-                                        rate_data = db.query(models.Rates).filter(models.Rates.id == rate_id).first()
-                                        new_rate_id = rate_id  
+                                        rate_data = (
+                                            db.query(models.Rates)
+                                            .filter(models.Rates.id == rate_id)
+                                            .first()
+                                        )
+                                        new_rate_id = rate_id
                                         old_value = f"<strong style='color: #f4a261;'>{rate_data.title.capitalize()}:</strong> '<span style='color: #2a9d8f;'>{rate_change.get('old_value')} {rate_data.currency}</span>'"
                                         new_value = f"<strong style='color: #f4a261;'>{rate_data.title.capitalize()}:</strong> '<span style='color: #2a9d8f;'>{rate_change.get('new_value')} {rate_data.currency}</span>'"
                                         html_content += f"<li class='line-item' style='margin-bottom: 0.5em;'>💰 '<span style='color: #e63946;'>{old_value}</span>' &rarr; '<span style='color: #2a9d8f;'>{new_value}</span>'</li>"
@@ -258,7 +351,13 @@ class RetrieveService:
         return html_content
 
     @staticmethod
-    def get_events_within_area(db: Session, lat: float, lon: float, radius: int = 10, unit: int = 0) -> (dict, List[float]): # type: ignore
+    # type: ignore
+    def get_events_within_area(db: Session, lat: float, lon: float, radius: int = 10, unit: int = 0) -> (dict, List[float]):
         reference_point = [lat, lon]
-        area = maps_utils.get_bounding_area(point=reference_point, radius=radius, units=unit)
-        return maps_utils.get_within_events(area, db=db, lat=lat, lon=lon), reference_point
+        area = maps_utils.get_bounding_area(
+            point=reference_point, radius=radius, units=unit
+        )
+        return (
+            maps_utils.get_within_events(area, db=db, lat=lat, lon=lon),
+            reference_point,
+        )

@@ -1,12 +1,16 @@
-from pydantic import BaseModel, EmailStr, Field, field_validator
-from typing import Optional, List, Any, Dict, Union
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Union
+
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class Context(BaseModel):
     request_id: Optional[str] = None
-    client: Optional[str] = Field(default="unknown", description="Client type (e.g., web, mobile)")
+    client: Optional[str] = Field(
+        default="unknown", description="Client type (e.g., web, mobile)"
+    )
     version: Optional[str] = Field(default="1.0.0", description="API version")
+
 
 class BaseInput(BaseModel):
     context: Optional[Context] = None
@@ -18,30 +22,35 @@ class BaseInput(BaseModel):
             raise ValueError("Payload cannot be empty")
         return value
 
+
 class MetaData(BaseModel):
-    
+
     request_id: Optional[str] = None
     client: Optional[str] = None
-    
+
+
 class ErrorDetails(BaseModel):
-    
+
     type: str
     message: str
     details: Optional[str] = None
 
+
 class ErrorDetailsHandler(BaseModel):
-    
+
     type: str
     details: Optional[str] = None
 
+
 class RateDetails(BaseModel):
-    
+
     title: str
     amount: float
     currency: str
 
+
 class EventLines(BaseModel):
-    
+
     start: datetime
     end: datetime
     rate: Union[RateDetails, List[RateDetails]]
@@ -49,19 +58,23 @@ class EventLines(BaseModel):
     capacity: Optional[int] = 0
     invited: Optional[List[int]] = None
 
+
 class UpdateDetails(BaseModel):
-    
+
     field: str
     value: Any
 
+
 class UpdateChanges(BaseModel):
-    
+
     id: int
     update: Optional[List[UpdateDetails]] = None
 
+
 class Deletes(BaseModel):
-    
+
     id: int
+
 
 class TableChanges(BaseModel):
     table: int

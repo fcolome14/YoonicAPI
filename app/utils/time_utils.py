@@ -1,8 +1,10 @@
-from datetime import datetime, timezone, timedelta
-from timezonefinder import TimezoneFinder
+from datetime import datetime, timedelta, timezone
+from typing import List, Tuple, Union
+
 import pytz
 from dateutil.relativedelta import relativedelta
-from typing import List, Union, Tuple
+from timezonefinder import TimezoneFinder
+
 
 def is_start_before_end(start: datetime, end: datetime) -> bool:
     """Checks if a string date is before an ending date
@@ -16,6 +18,7 @@ def is_start_before_end(start: datetime, end: datetime) -> bool:
     """
     return start < end
 
+
 def is_date_expired(date: datetime) -> bool:
     """Checks if a given date is expired
 
@@ -27,11 +30,15 @@ def is_date_expired(date: datetime) -> bool:
     """
     return date > datetime.now(timezone.utc)
 
-def convert_to_utc(datetime_obj: datetime, timezone: str = "America/New_York") -> datetime:
+
+def convert_to_utc(
+    datetime_obj: datetime, timezone: str = "America/New_York"
+) -> datetime:
     if datetime_obj.tzinfo is None:
         local_tz = pytz.timezone(timezone)
         datetime_obj = local_tz.localize(datetime_obj)
     return datetime_obj.astimezone(pytz.utc)
+
 
 def get_timezone_by_coordinates(lat: float, lon: float) -> str:
     tz_finder = TimezoneFinder()
@@ -41,9 +48,11 @@ def get_timezone_by_coordinates(lat: float, lon: float) -> str:
         return "Timezone not found"
     return timezone_str
 
+
 def convert_to_timezone(datetime_obj: datetime, timezone_str: str) -> datetime:
     timezone = pytz.timezone(timezone_str)
     return datetime_obj.astimezone(timezone)
+
 
 def repeat_daily(start: datetime, end: datetime, occurrences: int = 1) -> dict:
     repeats_dict = {}
@@ -55,10 +64,15 @@ def repeat_daily(start: datetime, end: datetime, occurrences: int = 1) -> dict:
     repeats_dict[0] = repeats
     return repeats_dict
 
-def repeat_weekly(start: Union[datetime, List[datetime]], end: Union[datetime, List[datetime]], occurrences: int = 1) -> dict:
+
+def repeat_weekly(
+    start: Union[datetime, List[datetime]],
+    end: Union[datetime, List[datetime]],
+    occurrences: int = 1,
+) -> dict:
     repeats = []
     repeats_dict = {}
-    
+
     if isinstance(start, datetime) and isinstance(start, datetime):
         for _ in range(occurrences):
             repeats.append((start, end))
@@ -66,7 +80,7 @@ def repeat_weekly(start: Union[datetime, List[datetime]], end: Union[datetime, L
             end += timedelta(weeks=1)
         repeats_dict[0] = repeats
         return repeats_dict
-    
+
     if isinstance(start, List) and isinstance(end, List):
         index = 0
         for item_start, item_end in zip(start, end):
@@ -78,14 +92,19 @@ def repeat_weekly(start: Union[datetime, List[datetime]], end: Union[datetime, L
             index += 1
             repeats = []
         return repeats_dict
-    
+
     else:
         return {"status": "error"}
 
-def repeat_monthly(start: Union[datetime, List[datetime]], end: Union[datetime, List[datetime]], occurrences: int = 1) -> dict:
+
+def repeat_monthly(
+    start: Union[datetime, List[datetime]],
+    end: Union[datetime, List[datetime]],
+    occurrences: int = 1,
+) -> dict:
     repeats = []
     repeats_dict = {}
-    
+
     if isinstance(start, datetime) and isinstance(start, datetime):
         for _ in range(occurrences):
             repeats.append((start, end))
@@ -93,7 +112,7 @@ def repeat_monthly(start: Union[datetime, List[datetime]], end: Union[datetime, 
             end += relativedelta(months=1)
         repeats_dict[0] = repeats
         return repeats_dict
-    
+
     if isinstance(start, List) and isinstance(end, List):
         index = 0
         for item_start, item_end in zip(start, end):
@@ -105,14 +124,19 @@ def repeat_monthly(start: Union[datetime, List[datetime]], end: Union[datetime, 
             index += 1
             repeats = []
         return repeats_dict
-    
+
     else:
         return {"status": "error"}
 
-def repeat_yearly(start: Union[datetime, List[datetime]], end: Union[datetime, List[datetime]], occurrences: int = 1) -> dict:
+
+def repeat_yearly(
+    start: Union[datetime, List[datetime]],
+    end: Union[datetime, List[datetime]],
+    occurrences: int = 1,
+) -> dict:
     repeats = []
     repeats_dict = {}
-    
+
     if isinstance(start, datetime) and isinstance(start, datetime):
         for _ in range(occurrences):
             repeats.append((start, end))
@@ -120,7 +144,7 @@ def repeat_yearly(start: Union[datetime, List[datetime]], end: Union[datetime, L
             end += relativedelta(years=1)
         repeats_dict[0] = repeats
         return repeats_dict
-    
+
     if isinstance(start, List) and isinstance(end, List):
         index = 0
         for item_start, item_end in zip(start, end):
@@ -132,14 +156,15 @@ def repeat_yearly(start: Union[datetime, List[datetime]], end: Union[datetime, L
             index += 1
             repeats = []
         return repeats_dict
-    
+
     else:
         return {"status": "error"}
+
 
 def repeat_weekday(start: datetime, end: datetime, occurrences: int = 1) -> dict:
     repeats = []
     repeats_dict = {}
-    
+
     while occurrences > 0:
         if start.weekday() < 5:
             repeats.append((start, end))
@@ -149,10 +174,11 @@ def repeat_weekday(start: datetime, end: datetime, occurrences: int = 1) -> dict
     repeats_dict[0] = repeats
     return repeats_dict
 
+
 def repeat_weekend(start, end, occurrences) -> dict:
     repeats = []
     repeats_dict = {}
-    
+
     while occurrences > 0:
         if start.weekday() >= 5:
             repeats.append((start, end))
@@ -162,7 +188,10 @@ def repeat_weekend(start, end, occurrences) -> dict:
     repeats_dict[0] = repeats
     return repeats_dict
 
-def set_week_days(start: datetime, end: datetime, target_days: List[int]) -> List[Tuple[datetime, datetime]]:
+
+def set_week_days(
+    start: datetime, end: datetime, target_days: List[int]
+) -> List[Tuple[datetime, datetime]]:
     """
     Generate ranges of datetimes (start, end) aligned to specified target weekdays.
 
@@ -183,7 +212,7 @@ def set_week_days(start: datetime, end: datetime, target_days: List[int]) -> Lis
     result = []
     result_dict = {}
     index = 1
-    
+
     result.append((start, end))
     result_dict[0] = result
     result = []
@@ -196,17 +225,18 @@ def set_week_days(start: datetime, end: datetime, target_days: List[int]) -> Lis
         aligned_end = datetime.combine(target_date.date(), end.time())
 
         result.append((aligned_start, aligned_end))
-        
+
         result_dict[index] = result
         result = []
         index += 1
-        
+
     return result_dict
+
 
 def is_valid_datetime(date_string: str, format: str = "%Y-%m-%d %H:%M:%S.%f") -> bool:
     """
     Check if the given string can be parsed into a datetime using the specified format.
-    
+
     :param date_string: The string to check.
     :param format: The datetime format to match against. Defaults to "%Y-%m-%d %H:%M:%S.%f".
     :return: True if valid, False otherwise.
@@ -216,5 +246,3 @@ def is_valid_datetime(date_string: str, format: str = "%Y-%m-%d %H:%M:%S.%f") ->
         return True
     except ValueError:
         return False
-         
-

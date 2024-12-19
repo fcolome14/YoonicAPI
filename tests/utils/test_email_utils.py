@@ -7,11 +7,42 @@ import app.models as models
 from app.utils import email_utils
 
 
+class MockEmailService:
+    
+    def __init__(self, mocker: MockerFixture):
+        self.mocker = mocker
+    
+    def mock_send_email(self, return_value):
+        return self.mocker.patch(
+            "app.utils.email_utils.send_auth_code", return_value=return_value
+        )
+    
+    def mock_smtp_error(self, side_effect):
+        mock_smtp = self.mocker.patch("smtplib.SMTP")
+        mock_smtp_instance = self.mocker.Mock()
+        mock_smtp.return_value = mock_smtp_instance
+        mock_smtp_instance.starttls.side_effect = side_effect
+        return mock_smtp_instance
+
+class MockDatabaseSession:
+    
+    def __init__(self, mocker: MockerFixture):
+        self.mocker = mocker
+        self.session = self.mocker.Mock()
+    
+    def mock_user_query(self, return_value):
+        self.session.query().filter().first.return_value = return_value
+        return self.session
+
 class TestEmailUtils:
 
-    @pytest.fixture(autouse=True)
+    @pytest.fixture
     def mock_db_session(self, mocker: MockerFixture):
-        return mocker.Mock()
+        return MockDatabaseSession(mocker).session
+    
+    @pytest.fixture
+    def mock_email_service(self, mocker: MockerFixture):
+        return MockEmailService(mocker)
 
     @pytest.mark.parametrize(
         "fetched_email, expected_output",
@@ -31,7 +62,7 @@ class TestEmailUtils:
         ],
     )
     def test_is_email_taken(
-        self, mocker: MockerFixture, expected_output, fetched_email, mock_db_session
+        self, expected_output, fetched_email, mock_db_session
     ):
         """Test if email is taken for different invalid inputs"""
 
@@ -104,10 +135,9 @@ class TestEmailUtils:
         template,
         expected_error,
         side_effect,
+        mock_email_service
     ):
         """Test code email sending exceptions"""
-
-        mocker.patch("os.getcwd", return_value="../../app/templates")
 
         if side_effect == FileNotFoundError:  # noqa: E721
             mocker.patch("builtins.open", side_effect=FileNotFoundError)
@@ -122,10 +152,7 @@ class TestEmailUtils:
             "app.utils.email_utils.create_email_code_token", return_value="test_token"
         )
 
-        mock_smtp = mocker.patch("smtplib.SMTP")
-        mock_smtp_instance = mocker.Mock()
-        mock_smtp.return_value = mock_smtp_instance
-        mock_smtp_instance.starttls.side_effect = side_effect
+        mock_email_service.mock_smtp_error(side_effect)
 
         result = email_utils.send_auth_code(
             db=mock_db_session, email="test@example.com", template=template
@@ -133,7 +160,7 @@ class TestEmailUtils:
 
         assert result == expected_error
 
-    def test_resend_auth_code_success(self, mocker: MockerFixture, mock_db_session):
+    def test_resend_auth_code_success(self, mocker: MockerFixture, mock_db_session, mock_email_service):
         """Test success code email re-sending"""
 
         mock_user = models.Users(
@@ -151,9 +178,10 @@ class TestEmailUtils:
             "new_code": mock_user.code,
             "user": mock_user,
         }
-
+        
+        mock_email_service.mock_send_email(mock_response)
+        mock_db_session.mock_user_query(mock_user)
         mock_db_session.query().filter().first.return_value = mock_user
-        mocker.patch("app.utils.email_utils.send_auth_code", return_value=mock_response)
 
         result = email_utils.resend_auth_code(mock_db_session, mock_user.code)
 
@@ -189,7 +217,7 @@ class TestEmailUtils:
         ],
     )
     def test_resend_auth_code_errors(
-        self, mocker: MockerFixture, mock_db_session, mock_user, mock_send_email
+        self, mocker: MockerFixture, mock_db_session, mock_user, mock_send_email, mock_email_service
     ):
         """Test errors in code email re-sending"""
 
@@ -197,10 +225,7 @@ class TestEmailUtils:
             expected_output = {"status": "error", "message": "Code not found"}
         expected_output = {"status": "error", "message": mock_send_email.get("message")}
 
-        mock_db_session.query().filter().first.return_value = mock_user
-        mocker.patch(
-            "app.utils.email_utils.send_auth_code", return_value=mock_send_email
-        )
+        mock_email_service.mock_send_email(mock_send_email)
 
         result = email_utils.resend_auth_code(mock_db_session, mock_user.code)
 

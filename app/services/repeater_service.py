@@ -1,8 +1,12 @@
-from typing import List, Union
 from datetime import datetime
+from typing import List, Union
+
 from app.utils import time_utils
 
-def select_repeater(every: int, start: datetime, end: datetime, occurrences: int = 1) -> Union[List[datetime], dict]:
+
+def select_repeater(
+    every: int, start: datetime, end: datetime, occurrences: int = 1
+) -> Union[List[datetime], dict]:
     if every == 0:  # Daily
         return time_utils.repeat_daily(start, end, occurrences)
     elif every == 1:  # Weekly
@@ -16,7 +20,10 @@ def select_repeater(every: int, start: datetime, end: datetime, occurrences: int
     else:
         return {"status": "error", "details": "Invalid 'every' value"}
 
-def select_repeater_custom(every: int, start: datetime, end: datetime, occurrences: int = 1) -> Union[List[datetime], dict]:
+
+def select_repeater_custom(
+    every: int, start: datetime, end: datetime, occurrences: int = 1
+) -> Union[List[datetime], dict]:
     if every == 0:  # Weekly
         return time_utils.repeat_weekly(start, end, occurrences)
     elif every == 1:  # Monthly

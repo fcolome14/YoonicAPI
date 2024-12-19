@@ -1,18 +1,17 @@
-from datetime import datetime, timedelta, timezone
-from app.schemas import schemas, bases
 from copy import deepcopy
-from typing import Union, List
+from datetime import datetime, timedelta, timezone
+from typing import List, Union
+
+from app.schemas import bases, schemas
+
 
 def create_mock_rate(single=True):
     """
     Create a mock rate. If `single` is False, return a list of rates.
     """
-    rate = bases.RateDetails(
-        title="Rate Test",
-        amount=33.5,
-        currency="EUR"
-    )
+    rate = bases.RateDetails(title="Rate Test", amount=33.5, currency="EUR")
     return rate if not single else [rate, deepcopy(rate)]
+
 
 def create_mock_line(rate, custom_each_day: bool):
     """
@@ -23,13 +22,18 @@ def create_mock_line(rate, custom_each_day: bool):
         end=datetime.now(timezone.utc) + timedelta(hours=10),
         rate=rate,
         isPublic=True,
-        capacity=10
+        capacity=10,
     )
     return line if not custom_each_day else [line, deepcopy(line)]
 
-def create_mock_input(line: Union[List[schemas.EventLines], schemas.EventLines], 
-                      custom_each_day: bool, custom_option_selected: bool, repeat: bool,
-                      where_to: int = 0):
+
+def create_mock_input(
+    line: Union[List[schemas.EventLines], schemas.EventLines],
+    custom_each_day: bool,
+    custom_option_selected: bool,
+    repeat: bool,
+    where_to: int = 0,
+):
     """
     Create a mock input using the provided line (single or list).
     """
@@ -46,8 +50,9 @@ def create_mock_input(line: Union[List[schemas.EventLines], schemas.EventLines],
         user_timezone="tz",
         category=2,
         line=line,
-        owner_id=1
+        owner_id=1,
     )
+
 
 def update_mock_input(mock_input, **updates):
     """

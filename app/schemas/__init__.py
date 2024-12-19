@@ -1,14 +1,17 @@
-from .schemas import SuccessResponse, ErrorResponse, RegisterInput, ErrorDetails, MetaData, CodeValidationInput, RecoveryCodeInput, UpdatePostInput, NewPostInput, DeletePostInput
 from .bases import ErrorDetailsHandler, RateDetails
-from .token import TokenSchema, TokenData
+from .schemas import (CodeValidationInput, DeletePostInput, ErrorDetails,
+                      ErrorResponse, MetaData, NewPostHeaderInput,
+                      NewPostInput, RecoveryCodeInput, RegisterInput,
+                      SuccessResponse, UpdatePostInput)
+from .token import TokenData, TokenSchema
 
 __all__ = [
     "TokenData",
     "TokenSchema",
-    "SuccessResponse", 
-    "ErrorResponse", 
-    "RegisterInput", 
-    "ErrorDetails", 
+    "SuccessResponse",
+    "ErrorResponse",
+    "RegisterInput",
+    "ErrorDetails",
     "ErrorDetailsHandler",
     "MetaData",
     "UpdatePostInput",
@@ -16,4 +19,6 @@ __all__ = [
     "RecoveryCodeInput",
     "RateDetails",
     "DeletePostInput",
-    "NewPostInput"] #Public interface exposure
+    "NewPostHeaderInput",
+    "NewPostInput",
+]  # Public interface exposure

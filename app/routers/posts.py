@@ -9,8 +9,8 @@ from app.exception_handlers import ErrorHTTPResponse
 from app.oauth2 import get_user_session
 from app.schemas import schemas
 from app.services.event_service import EventDeleteService
-from app.services.posting_service import EventUpdateService, PostService
 from app.services.retrieve_service import RetrieveService
+from app.services.post_service import HeaderPostsService
 from app.success_handlers import success_response
 from app.utils import email_utils
 
@@ -26,24 +26,13 @@ def new_post(
     user_id: int = Depends(get_user_session),
     request: Request = None,
 ):
-    fetched_header = (
-        db.query(models.EventsHeaders)
-        .filter(
-            and_(
-                or_(models.EventsHeaders.status == 2, models.EventsHeaders.status == 1),
-                models.EventsHeaders.owner_id == user_id,
-            )
+    result = HeaderPostsService.fetch_pending_headers(db, user_id) 
+    if result["status"] == "error":
+        raise ErrorHTTPResponse.error_response(
+            "FetchHeader", result.get("details"), None
         )
-        .first()
-    )
-
-    if not fetched_header:
-        message, header = "No pending headers", None
-    else:
-        message, header = (
-            "Found pending headers",
-            RetrieveService.generate_header_structure(fetched_header),
-        )
+    
+    message, header = result["details"]
     return success_response(message, header, request)
 
 
@@ -59,7 +48,7 @@ async def create_header(
     request: Request = None,
 ):
 
-    result = await PostService.process_header(
+    result = await HeaderPostsService.process_header(
         db=db, user_id=user_id, posting_header=posting_data
     )
     if result.get("status") == "error":
@@ -240,44 +229,44 @@ def delete_event(
     )
 
 
-@router.put(
-    "/update-event",
-    response_model=schemas.SuccessResponse,
-    status_code=status.HTTP_200_OK,
-)
-async def update_event(
-    updated_data: schemas.UpdatePostInput,
-    db: Session = Depends(get_db),
-    request: Request = None,
-    user_id: int = Depends(get_user_session),
-):
+# @router.put(
+#     "/update-event",
+#     response_model=schemas.SuccessResponse,
+#     status_code=status.HTTP_200_OK,
+# )
+# async def update_event(
+#     updated_data: schemas.UpdatePostInput,
+#     db: Session = Depends(get_db),
+#     request: Request = None,
+#     user_id: int = Depends(get_user_session),
+# ):
 
-    raw_changes = await PostService.update_post_data(
-        user_id=user_id, update_data=updated_data, db=db
-    )
+#     raw_changes = await HeaderPostsService.update_post_data(
+#         user_id=user_id, update_data=updated_data, db=db
+#     )
 
-    if raw_changes.get("status") == "error":
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=schemas.ErrorDetails(
-                type="UpdatePost", message=raw_changes.get("details"), details=None
-            ).model_dump(),
-        )
+#     if raw_changes.get("status") == "error":
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail=schemas.ErrorDetails(
+#                 type="UpdatePost", message=raw_changes.get("details"), details=None
+#             ).model_dump(),
+#         )
 
-    filtered_changes = EventUpdateService.group_changes_by_event(raw_changes)
-    result_email = {}
-    if len(filtered_changes) > 0:
-        message = "Sent event update email"
-        result_email = email_utils.send_updated_events(db, user_id, filtered_changes)
-    else:
-        message = "Event unchanged. Email not sent"
+#     filtered_changes = HeaderPostsService.group_changes_by_event(raw_changes)
+#     result_email = {}
+#     if len(filtered_changes) > 0:
+#         message = "Sent event update email"
+#         result_email = email_utils.send_updated_events(db, user_id, filtered_changes)
+#     else:
+#         message = "Event unchanged. Email not sent"
 
-    return schemas.SuccessResponse(
-        status="success",
-        message=message,
-        data=result_email,
-        meta={
-            "request_id": request.headers.get("request-id", "default_request_id"),
-            "client": request.headers.get("client-type", "unknown"),
-        },
-    )
+#     return schemas.SuccessResponse(
+#         status="success",
+#         message=message,
+#         data=result_email,
+#         meta={
+#             "request_id": request.headers.get("request-id", "default_request_id"),
+#             "client": request.headers.get("client-type", "unknown"),
+#         },
+#     )

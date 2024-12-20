@@ -79,23 +79,6 @@ class RetrieveService:
         return event_data
 
     @staticmethod
-    def generate_header_structure(header: models.EventsHeaders):
-        event_dict = {
-            "id": header.id,
-            "title": header.title,
-            "description": header.description,
-            "address": header.address,
-            "coordinates": header.coordinates,
-            "img": header.img,
-            "img2": header.img2,
-            "owner_id": header.owner_id,
-            "category": header.category,
-            "status": header.status,
-        }
-
-        return event_dict
-
-    @staticmethod
     def generate_updated_events_structure(
         db: Session,
         headers: List[models.EventsHeaders],

@@ -3,9 +3,18 @@ import smtplib
 import pytest
 from pytest_mock import MockerFixture
 
+import copy
+
+from app.schemas.schemas import InternalResponse, ResponseStatus
+from datetime import datetime
+from app.services.retrieve_service import RetrieveService
+
+from app.models import Users
+
 import app.models as models
 from app.utils import email_utils
-
+from app.services.auth_service import AuthService
+from app.utils.data_utils import validate_email
 
 class MockEmailService:
     
@@ -43,34 +52,52 @@ class TestEmailUtils:
     @pytest.fixture
     def mock_email_service(self, mocker: MockerFixture):
         return MockEmailService(mocker)
+    
+    @pytest.fixture
+    def mock_db_user(self):
+        return Users(
+            id=1,
+            full_name="User Test",
+            email="test@example.com",
+            password="uf3su4db48348734t834nn58",
+            code=None,
+            code_expiration=None,
+            is_validated=True,
+            created_at="2024-12-17 18:39:47.98487+01",
+        )
+    
+    @pytest.fixture
+    def expected_output(self):
+        return InternalResponse(
+            status=ResponseStatus.SUCCESS,
+            origin="",
+            message="",
+            timestamp=datetime.now().isoformat(),
+        )
 
-    @pytest.mark.parametrize(
-        "fetched_email, expected_output",
-        [
-            ("example2@test.com", None),
-            (
-                "example@test.com",
-                models.Users(
-                    id=1,
-                    username="example",
-                    full_name="Example Test",
-                    email="example@test.com",
-                    password="hashed_password",
-                    is_validated=False,
-                ),
-            ),
-        ],
-    )
-    def test_is_email_taken(
-        self, expected_output, fetched_email, mock_db_session
+    def test_is_email_taken_succeed(
+        self,
+        mock_db_session,
+        expected_output: InternalResponse,
+        mocker: MockerFixture,
     ):
-        """Test if email is taken for different invalid inputs"""
+        fetched_email = "test2@example.es"
+        
+        validate_email_output = copy.deepcopy(expected_output)
+        validate_email_output.status = ResponseStatus.ERROR
+        validate_email_output.origin = "validate_email"
+        validate_email_output.message = "Not found"
 
-        mock_db_session.query().filter().first.return_value = expected_output
+        expected_output.status = ResponseStatus.SUCCESS
+        expected_output.origin = "is_email_taken"
+        expected_output.message = "Email available"
 
-        response = email_utils.is_email_taken(mock_db_session, fetched_email)
+        mocker.patch("app.utils.email_utils.validate_email", return_value=validate_email_output)
+        
+        result: InternalResponse = email_utils.is_email_taken(mock_db_session, fetched_email)
+        expected_output.timestamp = result.timestamp
 
-        assert response == expected_output
+        assert result == expected_output
 
     @pytest.mark.parametrize(
         "fetched_email",
@@ -79,154 +106,384 @@ class TestEmailUtils:
             12345,
         ],
     )
-    def test_is_email_taken_exceptions(self, fetched_email, mock_db_session):
-        """Test if email is already taken exceptions"""
+    def test_is_email_taken_errors(
+        self, 
+        fetched_email, 
+        mock_db_session,
+        expected_output: InternalResponse
+        ):
+        
+        expected_output.status = ResponseStatus.ERROR
+        expected_output.origin = "is_email_taken"
+        expected_output.message = "Email must be provided"
 
-        mock_db_session.query().filter().first.return_value = None
+        result: InternalResponse = email_utils.is_email_taken(mock_db_session, fetched_email)
+        expected_output.timestamp = result.timestamp
+        
+        assert result == expected_output
 
-        with pytest.raises(ValueError):
-            email_utils.is_email_taken(mock_db_session, fetched_email)
+    def test_send_auth_code_succeed(
+        self, 
+        mocker: MockerFixture, 
+        mock_db_session,
+        expected_output: InternalResponse,
+        mock_db_user: Users
+        ):
 
-    def test_send_auth_code_success(self, mocker: MockerFixture, mock_db_session):
-        """Test auth code email sending success"""
+        code = 123456
+        expected_code_output = copy.deepcopy(expected_output)
+        expected_send_email_output = copy.deepcopy(expected_output)
+        
+        expected_output.status = ResponseStatus.SUCCESS
+        expected_output.message = code
+        expected_output.origin = "send_auth_code"
+        
+        expected_code_output.status = ResponseStatus.SUCCESS
+        expected_code_output.message = code
+        expected_code_output.origin = "generate_code"
+        
+        expected_send_email_output.status = ResponseStatus.SUCCESS
+        expected_send_email_output.message = "Email sent"
+        expected_send_email_output.origin = "send_email"
+        
+        mocker.patch.object(AuthService, 
+                            expected_code_output.origin, 
+                            return_value = expected_code_output)
+        mocker.patch("app.utils.email_utils.send_email", 
+                     return_value = expected_send_email_output)
+        
+        result: InternalResponse = email_utils.send_auth_code(mock_db_session, mock_db_user.email)
+        expected_output.timestamp = result.timestamp
+        
+        assert result == expected_output
 
-        mock_response = {"status": "success", "message": 123456}
+    @pytest.mark.parametrize("templateError, openFileError, sendEmailError, message", [
+        (True, False, False, "HTML Template not found"),
+        (False, True, False, "Email verification code template not found"),
+        (False, False, True, "Failed to connect to the SMTP server"),
+    ])
+    def test_send_auth_code_errors(
+        self, 
+        mocker: MockerFixture, 
+        mock_db_session,
+        templateError,
+        openFileError,
+        sendEmailError,
+        message,
+        expected_output: InternalResponse,
+        mock_db_user: Users
+        ):
 
-        mock_send_email = mocker.patch(
-            "app.utils.email_utils.send_auth_code", return_value=mock_response
+        template = 1
+        code = 123456
+        expected_code_output = copy.deepcopy(expected_output)
+        
+        expected_output.status = ResponseStatus.ERROR
+        expected_output.origin = "send_auth_code"
+        expected_output.message = message
+        
+        expected_code_output.status = ResponseStatus.SUCCESS
+        expected_code_output.message = code
+        expected_code_output.origin = "generate_code"
+        
+        mock_template_content = "email_verification_code.html"
+        mocker.patch(
+            "builtins.open", mocker.mock_open(read_data=mock_template_content)
         )
-        result = email_utils.send_auth_code(mock_db_session, "test@example.com")
-        assert result == mock_response
+        mocker.patch.object(AuthService, "generate_code", return_value=expected_code_output)
+        if templateError:
+            template = 5
+        if openFileError:
+            mocker.patch("builtins.open", side_effect=FileNotFoundError)
+        if sendEmailError:
+            expected_output.origin = "send_email"
+            mocker.patch("app.utils.email_utils.send_email", return_value=expected_output)
+        mocker.patch("app.utils.email_utils.create_email_code_token", 
+                     return_value={"email": mock_db_user.email, "code": code})
+    
+        result: InternalResponse = email_utils.send_auth_code(
+            mock_db_session, 
+            mock_db_user.email, 
+            template
+        )
+        expected_output.timestamp = result.timestamp
+        
+        assert result == expected_output
+        
+    def test_send_updated_events_succeed(
+        self, 
+        mocker: MockerFixture, 
+        mock_db_session,
+        expected_output: InternalResponse,
+        mock_db_user: Users
+        ):
 
-        mock_send_email.assert_called_once_with(mock_db_session, "test@example.com")
-
+        expected_send_email_output = copy.deepcopy(expected_output)
+        expected_get_user_data_output = copy.deepcopy(expected_output)
+        
+        mock_email_body = "<p> Test </p>"
+        mock_changes = {"key": "Change"}
+        
+        expected_output.status = ResponseStatus.SUCCESS
+        expected_output.message = "Changes sent via email"
+        expected_output.origin = "send_updated_events"
+        
+        expected_send_email_output.status = ResponseStatus.SUCCESS
+        expected_send_email_output.message = "Email sent"
+        expected_send_email_output.origin = "send_email"
+        
+        expected_get_user_data_output.status = ResponseStatus.SUCCESS
+        expected_get_user_data_output.message = mock_db_user
+        expected_get_user_data_output.origin = "get_user_data"
+        
+        mocker.patch("app.utils.email_utils.get_user_data", 
+                     return_value=expected_get_user_data_output)
+        mock_template_content = "event_changed.html"
+        mocker.patch(
+            "builtins.open", 
+            mocker.mock_open(read_data=mock_template_content)
+        )
+        mocker.patch.object(RetrieveService, "generate_event_changes_html", 
+                     return_value = mock_email_body)
+        mocker.patch("app.utils.email_utils.send_email", 
+                     return_value = expected_send_email_output)
+        
+        result: InternalResponse = email_utils.send_updated_events(mock_db_session, 
+                                                                   mock_db_user.id,
+                                                                   mock_changes)
+        expected_output.timestamp = result.timestamp
+        
+        assert result == expected_output
+        
     @pytest.mark.parametrize(
-        "template, expected_error, side_effect",
+        "getUserDataError, openFileError, sendEmailError, message",
         [
-            (
-                0,
-                {
-                    "status": "error",
-                    "message": "Email verification code template not found",
-                },
-                FileNotFoundError,
-            ),
-            (
-                1,
-                {"status": "error", "message": "SMTP error occurred: "},
-                smtplib.SMTPException,
-            ),
-            (
-                0,
-                {"status": "error", "message": "Failed to connect to the SMTP server"},
-                ConnectionError,
-            ),
-            (
-                0,
-                {"status": "error", "message": "An unexpected error occurred: "},
-                Exception,
-            ),
+            (True, False, False, "Not found"),
+            (False, True, False, "Updated Event template not found"),
+            (False, False, True, "Failed to connect to the SMTP server"),
         ],
     )
-    def test_send_auth_code_exceptions(
+    def test_send_updated_events_errors(
         self,
         mocker: MockerFixture,
         mock_db_session,
-        template,
-        expected_error,
-        side_effect,
-        mock_email_service
+        expected_output: InternalResponse,
+        mock_db_user: Users,
+        getUserDataError,
+        openFileError,
+        sendEmailError,
+        message,
     ):
-        """Test code email sending exceptions"""
+        mock_email_body = "<p> Test </p>"
+        mock_changes = {"key": "Change"}
+        mock_template_content = "event_changed.html"
 
-        if side_effect == FileNotFoundError:  # noqa: E721
+        expected_output.status = ResponseStatus.ERROR
+        expected_output.message = message
+        expected_output.origin = "send_updated_events"
+
+        expected_send_email_output = copy.deepcopy(expected_output)
+        expected_send_email_output.message = "Email sent"
+        expected_send_email_output.origin = "send_email"
+
+        expected_get_user_data_output = copy.deepcopy(expected_output)
+        expected_get_user_data_output.message = mock_db_user
+        expected_get_user_data_output.origin = "get_user_data"
+
+        if getUserDataError:
+            expected_get_user_data_output.status = ResponseStatus.ERROR
+            expected_get_user_data_output.message = message
+            expected_output.origin = expected_get_user_data_output.origin
+        elif openFileError:
+            expected_get_user_data_output.status = ResponseStatus.SUCCESS
             mocker.patch("builtins.open", side_effect=FileNotFoundError)
         else:
-            mock_template_content = "email_verification_code.html"
             mocker.patch(
-                "builtins.open", mocker.mock_open(read_data=mock_template_content)
+                "builtins.open",
+                mocker.mock_open(read_data=mock_template_content),
             )
 
-        mocker.patch("app.utils.email_utils.generate_code", return_value="123456")
+        if sendEmailError:
+            expected_send_email_output.status = ResponseStatus.ERROR
+            expected_send_email_output.message = message
+            expected_get_user_data_output.status = ResponseStatus.SUCCESS
+            expected_get_user_data_output.message = mock_db_user
+            expected_output.origin = expected_send_email_output.origin
+
         mocker.patch(
-            "app.utils.email_utils.create_email_code_token", return_value="test_token"
+            "app.utils.email_utils.get_user_data",
+            return_value=expected_get_user_data_output,
+        )
+        mocker.patch.object(
+            RetrieveService,
+            "generate_event_changes_html",
+            return_value=mock_email_body,
+        )
+        mocker.patch(
+            "app.utils.email_utils.send_email",
+            return_value=expected_send_email_output,
         )
 
-        mock_email_service.mock_smtp_error(side_effect)
-
-        result = email_utils.send_auth_code(
-            db=mock_db_session, email="test@example.com", template=template
+        result: InternalResponse = email_utils.send_updated_events(
+            mock_db_session, mock_db_user.id, mock_changes
         )
 
-        assert result == expected_error
+        expected_output.timestamp = result.timestamp
 
-    def test_resend_auth_code_success(self, mocker: MockerFixture, mock_db_session, mock_email_service):
-        """Test success code email re-sending"""
+        assert result == expected_output
 
-        mock_user = models.Users(
-            id=1,
-            email="test@example.com",
-            password="hashed_password",
-            full_name="Test Example",
-            username="texample",
-            code=123456,
-            is_validated=True,
-        )
-        mock_response = {"status": "success", "message": mock_user.code}
-        expected_output = {
-            "status": "success",
-            "new_code": mock_user.code,
-            "user": mock_user,
-        }
         
-        mock_email_service.mock_send_email(mock_response)
-        mock_db_session.mock_user_query(mock_user)
-        mock_db_session.query().filter().first.return_value = mock_user
-
-        result = email_utils.resend_auth_code(mock_db_session, mock_user.code)
-
+    def test_send_email_succeed(
+        self, 
+        mocker: MockerFixture, 
+        expected_output: InternalResponse,
+        mock_db_user: Users):
+        
+        subject = "Test"
+        html_content = "<p> Test </p)"
+        
+        expected_output.status = ResponseStatus.SUCCESS
+        expected_output.origin = "send_email"
+        expected_output.message = "Email sent"
+        
+        mock_smtp = mocker.patch("smtplib.SMTP")
+        mock_server = mock_smtp.return_value
+        mock_server.starttls.return_value = None
+        mock_server.login.return_value = None
+        mock_server.sendmail.return_value = None
+        mock_server.quit.return_value = None
+        
+        result = email_utils.send_email(mock_db_user.email, subject, html_content)
+        expected_output.timestamp = result.timestamp
+        
         assert result == expected_output
-
+    
     @pytest.mark.parametrize(
-        "mock_user, mock_send_email",
-        [
-            (
-                models.Users(
-                    id=1,
-                    email="test@example.com",
-                    password="hashed_password",
-                    full_name="Test Example",
-                    username="texample",
-                    code=123456,
-                    is_validated=True,
-                ),
-                {"status": "error", "message": "SMTP error occurred: "},
-            ),
-            (
-                models.Users(
-                    id=1,
-                    email="test@example.com",
-                    password="hashed_password",
-                    full_name="Test Example",
-                    username="texample",
-                    code=654321,
-                    is_validated=True,
-                ),
-                {"status": "error", "message": "SMTP error occurred: "},
-            ),
-        ],
-    )
-    def test_resend_auth_code_errors(
-        self, mocker: MockerFixture, mock_db_session, mock_user, mock_send_email, mock_email_service
-    ):
-        """Test errors in code email re-sending"""
-
-        if not mock_user:
-            expected_output = {"status": "error", "message": "Code not found"}
-        expected_output = {"status": "error", "message": mock_send_email.get("message")}
-
-        mock_email_service.mock_send_email(mock_send_email)
-
-        result = email_utils.resend_auth_code(mock_db_session, mock_user.code)
-
+        "_SMTPException, _ConnectionError, _GenericException, message", [
+            (True, False, False, "SMTP error occurred"),
+            (False, True, False, "Failed to connect to the SMTP server"),
+            (False, False, True, "An unexpected error occurred"),
+        ])
+    def test_send_email_errors(
+        self, 
+        mocker: MockerFixture, 
+        _SMTPException, 
+        _ConnectionError, 
+        _GenericException, 
+        message,
+        expected_output: InternalResponse,
+        mock_db_user: Users):
+        
+        subject = "Test"
+        html_content = "<p> Test </p)"
+        
+        expected_output.status = ResponseStatus.ERROR
+        expected_output.origin = "send_email"
+        detailError = ''
+        
+        mock_smtp = mocker.patch("smtplib.SMTP")
+        mock_server = mock_smtp.return_value
+        mock_server.starttls.return_value = None
+        mock_server.login.return_value = None
+        mock_server.sendmail.return_value = None
+        mock_server.quit.return_value = None
+        
+        if _SMTPException:
+             detailError = "SMTPError"
+             mocker.patch("smtplib.SMTP", side_effect=smtplib.SMTPException(detailError))
+        if _GenericException:
+             detailError = "Test Exception"
+             mocker.patch("smtplib.SMTP", side_effect=Exception(detailError))
+        expected_output.message = f'{message}: {detailError}'
+        if _ConnectionError:
+             detailError = "Test Connection Failure"
+             expected_output.message = message
+             mocker.patch("smtplib.SMTP", side_effect=ConnectionError(detailError))
+        
+        result = email_utils.send_email(mock_db_user.email, subject, html_content)
+        expected_output.timestamp = result.timestamp
+        
         assert result == expected_output
+        
+    def test_resend_auth_code_succeed(
+        self, 
+        mocker: MockerFixture,
+        mock_db_session, 
+        mock_db_user: Users,
+        expected_output: InternalResponse):
+        
+        mock_db_user.code = 123456
+        
+        expected_output.status = ResponseStatus.SUCCESS
+        expected_output.message="Email sent"
+        expected_output.origin = "resend_auth_code"
+        
+        expected_owner_code_output = copy.deepcopy(expected_output)
+        expected_owner_code_output.message = mock_db_user
+        expected_owner_code_output.origin = "get_code_owner"
+
+        expected_send_email_output = copy.deepcopy(expected_output)
+        expected_send_email_output.message = "Email sent"
+        expected_send_email_output.origin = "send_email"
+        
+        mocker.patch("app.utils.email_utils.get_code_owner", 
+                     return_value=expected_owner_code_output)
+        mocker.patch("app.utils.email_utils.send_auth_code", 
+                     return_value=expected_send_email_output)
+        
+        result: InternalResponse = email_utils.resend_auth_code(mock_db_session, mock_db_user.code)
+        expected_output.timestamp = result.timestamp
+        
+        assert result == expected_output
+    
+    @pytest.mark.parametrize(
+        "getCodeOwnerError, sendEmailError, message", [
+            (True, False, "Not found"),
+            (False, True, "Failed to connect to the SMTP server"),
+        ])
+    def test_resend_auth_code_errors(
+        self, 
+        mocker: MockerFixture,
+        mock_db_session, 
+        mock_db_user: Users,
+        getCodeOwnerError, 
+        sendEmailError, 
+        message,
+        expected_output: InternalResponse):
+        
+        mock_db_user.code = 123456
+        
+        expected_output.status = ResponseStatus.ERROR
+        expected_output.origin = "resend_auth_code"
+
+        expected_send_email_output = copy.deepcopy(expected_output)
+        expected_send_email_output.message = "Email sent"
+        expected_send_email_output.origin = "send_email"
+        
+        expected_owner_code_output = copy.deepcopy(expected_output)
+        expected_owner_code_output.message = mock_db_user
+        expected_owner_code_output.origin = "get_code_owner"
+        
+        expected_output.message=message
+        
+        if getCodeOwnerError:
+            expected_owner_code_output.status = ResponseStatus.ERROR
+            expected_owner_code_output.message = message
+            expected_output.origin = expected_owner_code_output.origin
+        
+        if sendEmailError:
+            expected_send_email_output.status = ResponseStatus.ERROR
+            expected_send_email_output.message = message
+            expected_output.origin = expected_send_email_output.origin
+        
+        mocker.patch("app.utils.email_utils.get_code_owner", 
+                     return_value=expected_owner_code_output)
+        mocker.patch("app.utils.email_utils.send_auth_code", 
+                     return_value=expected_send_email_output)
+        
+        result: InternalResponse = email_utils.resend_auth_code(mock_db_session, mock_db_user.code)
+        expected_output.timestamp = result.timestamp
+        
+        assert result == expected_output
+        
+    

@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import Enum
 from typing import Any, List, Optional, Tuple, Union
 
 from pydantic import BaseModel, EmailStr, Field
@@ -6,7 +7,12 @@ from pydantic import BaseModel, EmailStr, Field
 from .bases import Deletes, ErrorDetails, EventLines, MetaData, TableChanges
 
 
-# OUTPUTS
+# RESPONSES
+class ResponseStatus(str, Enum):
+    SUCCESS = "success"
+    ERROR = "error"
+    WARNING = "warning"
+    
 class SuccessResponse(BaseModel):
     """Common success request response body"""
 
@@ -23,6 +29,14 @@ class ErrorResponse(BaseModel):
     message: str
     data: ErrorDetails
     meta: Optional[MetaData] = None
+
+class InternalResponse(BaseModel):
+    """Common internal functions response body"""
+    
+    status: ResponseStatus
+    origin: str
+    message: Any
+    timestamp: str
 
 
 # REGISTER

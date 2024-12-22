@@ -5,13 +5,12 @@ from sqlalchemy.orm import Session
 
 import app.models as models
 from app.database.connection import get_db
-from app.exception_handlers import ErrorHTTPResponse
 from app.oauth2 import get_user_session
 from app.schemas import schemas
 from app.services.event_service import EventDeleteService
 from app.services.retrieve_service import RetrieveService
 from app.services.post_service import HeaderPostsService
-from app.success_handlers import success_response
+from app.responses import SuccessHTTPResponse, ErrorHTTPResponse
 from app.utils import email_utils
 
 router = APIRouter(prefix="/posts", tags=["Posts"])
@@ -33,7 +32,7 @@ def new_post(
         )
     
     message, header = result["details"]
-    return success_response(message, header, request)
+    return SuccessHTTPResponse.success_response(message, header, request)
 
 
 @router.post(
@@ -55,7 +54,7 @@ async def create_header(
         raise ErrorHTTPResponse.error_response(
             "CreateHeader", result.get("details"), None
         )
-    return success_response(result.get("message"), result.get("header"), request)
+    return SuccessHTTPResponse.success_response(result.get("message"), result.get("header"), request)
 
 
 @router.get(

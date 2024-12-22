@@ -1,89 +1,181 @@
 from datetime import datetime, timedelta, timezone
 from typing import List, Tuple, Union
 
+from app.responses import SystemResponse
+from app.schemas.schemas import ResponseStatus
+import inspect
+
+from app.config import settings
+
 import pytz
+import pdb
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 from dateutil.relativedelta import relativedelta
 from timezonefinder import TimezoneFinder
 
 
-def is_start_before_end(start: datetime, end: datetime) -> bool:
-    """Checks if a string date is before an ending date
+def is_start_before_end(start: datetime, end: datetime) -> InterruptedError:
+    """
+    Checks if a starting date is before an ending date
 
     Args:
         start (datetime): Staring date
         end (datetime): Ending date
 
     Returns:
-        bool: Logic result
+        InterruptedError: Internal response
     """
-    return start < end
+    status = ResponseStatus.ERROR
+    origin = inspect.stack()[0].function
+    
+    if start < end:
+        return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, True)
+    return SystemResponse.internal_response(status, origin, "Ending date must be after starting")
 
-
-def is_date_expired(date: datetime) -> bool:
-    """Checks if a given date is expired
+def is_date_expired(date: datetime) -> InterruptedError:
+    """
+    Checks if a given date has passed the current time
 
     Args:
-        date (datetime): Date to be checked
+        date (datetime): Date to validate
 
     Returns:
-        bool: Logic result
+        InterruptedError: Internal response
     """
-    return date > datetime.now(timezone.utc)
+    origin = inspect.stack()[0].function
+    
+    if date < datetime.now(timezone.utc):
+        return SystemResponse.internal_response(ResponseStatus.ERROR, origin, False)
+    return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, "Expired date") #Exp
 
 
 def convert_to_utc(
-    datetime_obj: datetime, timezone: str = "America/New_York"
-) -> datetime:
+    datetime_obj: datetime
+    ) -> InterruptedError:
+    """
+    Convert a date object to UTC
+
+    Args:
+        datetime_obj (datetime): Date time aware (Includes TZ)
+
+    Returns:
+        InterruptedError: Internal response
+    """
+    
+    origin = inspect.stack()[0].function
     if datetime_obj.tzinfo is None:
-        local_tz = pytz.timezone(timezone)
-        datetime_obj = local_tz.localize(datetime_obj)
-    return datetime_obj.astimezone(pytz.utc)
+        return SystemResponse.internal_response(ResponseStatus.ERROR, origin, "Naive time. No TZ information provided")
+    datetime_obj = datetime_obj.astimezone(ZoneInfo('UTC'))
+    return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, datetime_obj)
 
+def convert_naive_to_utc(
+    datetime_obj: datetime, 
+    timezone_str: str) -> InterruptedError:
+    """
+    Convert a naive date to UTC
 
-def get_timezone_by_coordinates(lat: float, lon: float) -> str:
-    tz_finder = TimezoneFinder()
+    Args:
+        datetime_obj (datetime): Naive date. Without TZ info
+        timezone_str (str): Valid TZ string
 
-    timezone_str = tz_finder.timezone_at(lng=lon, lat=lat)
-    if timezone_str is None:
-        return "Timezone not found"
-    return timezone_str
+    Returns:
+        InterruptedError: Internal response
+    """
+    
+    origin = inspect.stack()[0].function
+    
+    try:
+        ZoneInfo(timezone_str)
+    except ZoneInfoNotFoundError as exc:
+        return SystemResponse.internal_response(
+            ResponseStatus.ERROR, 
+            origin, 
+            f"Raised ZoneInfo error: {exc}")
+    
+    if datetime_obj.tzinfo is None:
+        datetime_obj = datetime_obj.astimezone(ZoneInfo(timezone_str))
+        result = convert_to_utc(datetime_obj)
+        if result.status == ResponseStatus.ERROR:
+            return result
+        return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, datetime_obj)
+    return SystemResponse.internal_response(ResponseStatus.ERROR, origin, "Time aware. TZ information provided")
 
+def repeat_daily(
+    start: datetime, 
+    end: datetime, 
+    occurrences: int = 1) -> InterruptedError:
+    """
+    Repeat provided dates daily
 
-def convert_to_timezone(datetime_obj: datetime, timezone_str: str) -> datetime:
-    timezone = pytz.timezone(timezone_str)
-    return datetime_obj.astimezone(timezone)
+    Args:
+        start (datetime): Staring date (UTC)
+        end (datetime): Ending date (UTC)
+        occurrences (int, optional): Number of occurrences. Defaults to 1.
 
-
-def repeat_daily(start: datetime, end: datetime, occurrences: int = 1) -> dict:
+    Returns:
+        InterruptedError: Internal response
+    """
     repeats_dict = {}
     repeats = []
+    origin = inspect.stack()[0].function
+    
+    result = is_start_before_end(start, end)
+    if result.status == ResponseStatus.ERROR:
+            return result
+        
     for _ in range(occurrences):
         repeats.append((start, end))
         start += timedelta(days=1)
         end += timedelta(days=1)
     repeats_dict[0] = repeats
-    return repeats_dict
-
+    
+    return SystemResponse.internal_response(
+        ResponseStatus.SUCCESS, 
+        origin, 
+        repeats_dict)
 
 def repeat_weekly(
     start: Union[datetime, List[datetime]],
     end: Union[datetime, List[datetime]],
     occurrences: int = 1,
-) -> dict:
+) -> InterruptedError:
+    """
+    Repeat weekly a given start and ending dates
+
+    Args:
+        start (Union[datetime, List[datetime]]): Starting dates (UTC)
+        end (Union[datetime, List[datetime]]): Ending dates (UTC)
+        occurrences (int, optional): Number of occurrences. Defaults to 1.
+
+    Returns:
+        InterruptedError: Internal response
+    """
     repeats = []
     repeats_dict = {}
+    origin = inspect.stack()[0].function
+    status = ResponseStatus.SUCCESS
 
     if isinstance(start, datetime) and isinstance(start, datetime):
+        result = is_start_before_end(start, end)
+        if result.status == ResponseStatus.ERROR:
+                return result
         for _ in range(occurrences):
             repeats.append((start, end))
             start += timedelta(weeks=1)
             end += timedelta(weeks=1)
         repeats_dict[0] = repeats
-        return repeats_dict
+        return SystemResponse.internal_response(
+        status, 
+        origin, 
+        repeats_dict)
 
     if isinstance(start, List) and isinstance(end, List):
         index = 0
         for item_start, item_end in zip(start, end):
+            result = is_start_before_end(item_start, item_end)
+            if result.status == ResponseStatus.ERROR:
+                return result
             repeats_dict[str(index)] = repeats
             for _ in range(occurrences):
                 repeats.append((item_start, item_end))
@@ -91,31 +183,58 @@ def repeat_weekly(
                 item_end += timedelta(weeks=1)
             index += 1
             repeats = []
-        return repeats_dict
-
+        return SystemResponse.internal_response(
+        status, 
+        origin, 
+        repeats_dict)
     else:
-        return {"status": "error"}
+        return SystemResponse.internal_response(
+        ResponseStatus.ERROR, 
+        origin, 
+        "Invalid dates structure provided")
 
 
 def repeat_monthly(
     start: Union[datetime, List[datetime]],
     end: Union[datetime, List[datetime]],
     occurrences: int = 1,
-) -> dict:
+) -> InterruptedError:
+    """
+    Repeat monthly a given start and ending dates
+
+    Args:
+        start (Union[datetime, List[datetime]]): Starting dates (UTC)
+        end (Union[datetime, List[datetime]]): Ending dates (UTC)
+        occurrences (int, optional): Number of occurrences. Defaults to 1.
+
+    Returns:
+        InterruptedError: Internal response
+    """
     repeats = []
     repeats_dict = {}
+    origin = inspect.stack()[0].function
+    status = ResponseStatus.SUCCESS
 
     if isinstance(start, datetime) and isinstance(start, datetime):
+        result = is_start_before_end(start, end)
+        if result.status == ResponseStatus.ERROR:
+                return result
         for _ in range(occurrences):
             repeats.append((start, end))
             start += relativedelta(months=1)
             end += relativedelta(months=1)
         repeats_dict[0] = repeats
-        return repeats_dict
+        return SystemResponse.internal_response(
+        status, 
+        origin, 
+        repeats_dict)
 
     if isinstance(start, List) and isinstance(end, List):
         index = 0
         for item_start, item_end in zip(start, end):
+            result = is_start_before_end(item_start, item_end)
+            if result.status == ResponseStatus.ERROR:
+                return result
             repeats_dict[str(index)] = repeats
             for _ in range(occurrences):
                 repeats.append((item_start, item_end))
@@ -123,31 +242,57 @@ def repeat_monthly(
                 item_end += relativedelta(months=1)
             index += 1
             repeats = []
-        return repeats_dict
-
+        return SystemResponse.internal_response(
+        status, 
+        origin, 
+        repeats_dict)
     else:
-        return {"status": "error"}
-
+        return SystemResponse.internal_response(
+        ResponseStatus.ERROR, 
+        origin, 
+        "Invalid dates structure provided")
 
 def repeat_yearly(
     start: Union[datetime, List[datetime]],
     end: Union[datetime, List[datetime]],
     occurrences: int = 1,
-) -> dict:
+) -> InterruptedError:
+    """
+    Repeat yearly a given start and ending dates
+
+    Args:
+        start (Union[datetime, List[datetime]]): Starting dates (UTC)
+        end (Union[datetime, List[datetime]]): Ending dates (UTC)
+        occurrences (int, optional): Number of occurrences. Defaults to 1.
+
+    Returns:
+        InterruptedError: Internal response
+    """
     repeats = []
     repeats_dict = {}
+    origin = inspect.stack()[0].function
+    status = ResponseStatus.SUCCESS
 
     if isinstance(start, datetime) and isinstance(start, datetime):
+        result = is_start_before_end(start, end)
+        if result.status == ResponseStatus.ERROR:
+                return result
         for _ in range(occurrences):
             repeats.append((start, end))
             start += relativedelta(years=1)
             end += relativedelta(years=1)
         repeats_dict[0] = repeats
-        return repeats_dict
+        return SystemResponse.internal_response(
+        status, 
+        origin, 
+        repeats_dict)
 
     if isinstance(start, List) and isinstance(end, List):
         index = 0
         for item_start, item_end in zip(start, end):
+            result = is_start_before_end(item_start, item_end)
+            if result.status == ResponseStatus.ERROR:
+                return result
             repeats_dict[str(index)] = repeats
             for _ in range(occurrences):
                 repeats.append((item_start, item_end))
@@ -155,16 +300,38 @@ def repeat_yearly(
                 item_end += relativedelta(years=1)
             index += 1
             repeats = []
-        return repeats_dict
-
+        return SystemResponse.internal_response(
+        status, 
+        origin, 
+        repeats_dict)
     else:
-        return {"status": "error"}
+        return SystemResponse.internal_response(
+        ResponseStatus.ERROR, 
+        origin, 
+        "Invalid dates structure provided")
 
+def repeat_weekday(
+    start: datetime, 
+    end: datetime, 
+    occurrences: int = 1) -> InterruptedError:
+    """
+    Repeat provided dates for weekdays
 
-def repeat_weekday(start: datetime, end: datetime, occurrences: int = 1) -> dict:
+    Args:
+        start (datetime): Staring date (UTC)
+        end (datetime): Ending date (UTC)
+        occurrences (int, optional): Number of occurrences. Defaults to 1.
+
+    Returns:
+        InterruptedError: Internal response
+    """
     repeats = []
     repeats_dict = {}
-
+    origin = inspect.stack()[0].function
+    
+    result = is_start_before_end(start, end)
+    if result.status == ResponseStatus.ERROR:
+            return result
     while occurrences > 0:
         if start.weekday() < 5:
             repeats.append((start, end))
@@ -172,13 +339,33 @@ def repeat_weekday(start: datetime, end: datetime, occurrences: int = 1) -> dict
         start += timedelta(days=1)
         end += timedelta(days=1)
     repeats_dict[0] = repeats
-    return repeats_dict
+    return SystemResponse.internal_response(
+        ResponseStatus.SUCCESS, 
+        origin, 
+        repeats_dict)
 
+def repeat_weekend(
+    start, 
+    end, 
+    occurrences) -> InterruptedError:
+    """
+    Repeat provided dates for weekends
 
-def repeat_weekend(start, end, occurrences) -> dict:
+    Args:
+        start (datetime): Staring date (UTC)
+        end (datetime): Ending date (UTC)
+        occurrences (int, optional): Number of occurrences. Defaults to 1.
+
+    Returns:
+        InterruptedError: Internal response
+    """
     repeats = []
     repeats_dict = {}
-
+    origin = inspect.stack()[0].function
+    
+    result = is_start_before_end(start, end)
+    if result.status == ResponseStatus.ERROR:
+            return result
     while occurrences > 0:
         if start.weekday() >= 5:
             repeats.append((start, end))
@@ -186,12 +373,16 @@ def repeat_weekend(start, end, occurrences) -> dict:
         start += timedelta(days=1)
         end += timedelta(days=1)
     repeats_dict[0] = repeats
-    return repeats_dict
+    return SystemResponse.internal_response(
+        ResponseStatus.SUCCESS, 
+        origin, 
+        repeats_dict)
 
 
 def set_week_days(
-    start: datetime, end: datetime, target_days: List[int]
-) -> List[Tuple[datetime, datetime]]:
+    start: datetime, 
+    end: datetime, 
+    target_days: List[int]) -> List[Tuple[datetime, datetime]]:
     """
     Generate ranges of datetimes (start, end) aligned to specified target weekdays.
 
@@ -203,10 +394,17 @@ def set_week_days(
     Returns:
         List[Tuple[datetime, datetime]]: List of (start, end) ranges for the target weekdays.
     """
+    origin = inspect.stack()[0].function
+    status = ResponseStatus.ERROR
+    
+    result = is_start_before_end(start, end)
+    if result.status == ResponseStatus.ERROR:
+            return result
     if not target_days:
-        raise ValueError("target_days cannot be empty")
-    if start > end:
-        raise ValueError("Start datetime must be before end datetime")
+        return SystemResponse.internal_response(
+        status, 
+        origin, 
+        "Must provide target days")
 
     target_days = sorted(set(target_days))
     result = []
@@ -229,8 +427,11 @@ def set_week_days(
         result_dict[index] = result
         result = []
         index += 1
-
-    return result_dict
+        
+    return SystemResponse.internal_response(
+        ResponseStatus.SUCCESS, 
+        origin, 
+        result_dict)
 
 
 def is_valid_datetime(date_string: str, format: str = "%Y-%m-%d %H:%M:%S.%f") -> bool:
@@ -246,3 +447,6 @@ def is_valid_datetime(date_string: str, format: str = "%Y-%m-%d %H:%M:%S.%f") ->
         return True
     except ValueError:
         return False
+
+def compute_expiration_time() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=pytz.utc) + timedelta(minutes=settings.email_code_expire_minutes)

@@ -18,6 +18,14 @@
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
+        .logo-container {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .logo-container img {
+            max-width: 150px;
+            height: auto;
+        }
         .header {
             text-align: center;
             font-size: 24px;
@@ -49,6 +57,12 @@
 </head>
 <body>
     <div class="email-container">
+        <!-- Logo Section -->
+        <div class="logo-container">
+            <img src="/static/assets/images/logo_color.png" alt="Yoonic Logo">
+        </div>
+        
+        <!-- Main Content -->
         <div class="header">{{ message }}</div>
         <p class="instructions">
             {% if success %}

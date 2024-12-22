@@ -1,3 +1,7 @@
+from app.responses import SystemResponse
+from app.schemas.schemas import ResponseStatus
+import inspect
+
 import random
 import string
 from datetime import datetime, timezone
@@ -26,11 +30,13 @@ def hash_password(pwd: str):
     Returns:
         _type_: Hashed password
     """
+    origin = inspect.stack()[0].function
+    message = pwd_context.hash(pwd)
+    return SystemResponse.internal_response(
+        ResponseStatus.SUCCESS, origin, message)
 
-    return pwd_context.hash(pwd)
 
-
-def is_password_valid(plain_password: str, hash_password: str) -> bool:
+def is_password_valid(plain_password: str, hash_password: str) -> dict:
     """Verifies a given plain password is valid
 
     Args:
@@ -40,8 +46,16 @@ def is_password_valid(plain_password: str, hash_password: str) -> bool:
     Returns:
         bool: True or False if matches
     """
-
-    return pwd_context.verify(plain_password, hash_password)
+    origin = inspect.stack()[0].function
+    result = pwd_context.verify(plain_password, hash_password)
+    
+    status=ResponseStatus.SUCCESS
+    message="Accepted password"
+    if not result:
+        status=ResponseStatus.ERROR
+        message="Invalid password"
+        
+    return SystemResponse.internal_response(status, origin, message)
 
 
 def is_user_valid(db: Session, email: str) -> models.Users | None:
@@ -55,28 +69,19 @@ def is_user_valid(db: Session, email: str) -> models.Users | None:
     Returns:
         models.Users | None: User records if its validates
     """
-
+    origin = inspect.stack()[0].function
+    
     user = db.query(models.Users).filter(
-        and_(models.Users.email == email, models.Users.is_validated == True)
-    )  # noqa: E712
+        and_(
+            models.Users.email == email, 
+            models.Users.is_validated == True) # noqa: E712
+            ) 
+    message ="User not found"
     if user:
-        return True
+        message = user
 
-    return False
-
-
-def is_user_logged(db: Session, username: str) -> bool:
-
-    response: models.TokenTable = (
-        db.query(models.TokenTable)
-        .join(models.Users, models.Users.id == models.TokenTable.user_id)
-        .filter(models.Users.username == username)
-        .order_by(desc(models.TokenTable.created_at))
-    )
-
-    if response.status and response:
-        return True
-    return False
+    return SystemResponse.internal_response(
+            ResponseStatus.SUCCESS, origin, message)
 
 
 def is_password_strong(plain_password: str) -> bool:
@@ -90,13 +95,19 @@ def is_password_strong(plain_password: str) -> bool:
         bool: True/False if is valid
     """
 
+    status = ResponseStatus.SUCCESS
+    origin = inspect.stack()[0].function
+    
     if len(plain_password) < 8:
-        return False
+        message = "Short password"
+        return SystemResponse.internal_response(status, origin, message)
     if not any(char.isdigit() for char in plain_password):
-        return False
+        message = "No digits in password"
+        return SystemResponse.internal_response(status, origin, message)
     if not any(char.isalpha() for char in plain_password):
-        return False
-    return True
+        message = "No characters in password"
+        return SystemResponse.internal_response(status, origin, message)
+    return SystemResponse.internal_response(status, origin, "")
 
 
 def is_username_email_taken(
@@ -114,17 +125,17 @@ def is_username_email_taken(
     """
 
     user = (
-        db.query(models.Users.email).filter(models.Users.email == email).first()
+        db.query(models.Users.email).filter(or_(models.Users.email == email, models.Users.username == username)).first()
         is not None
     )  # noqa: E712
-    if user:
-        return user
-    return (
-        db.query(models.Users.username)
-        .filter(models.Users.username == username)
-        .first()
-        is not None
-    )  # noqa: E712
+    
+    status = ResponseStatus.ERROR
+    origin = inspect.stack()[0].function
+    message = "User or email already registered"
+    if not user:
+        status = ResponseStatus.SUCCESS
+        message = ""
+    return SystemResponse.internal_response(status, origin, message)
 
 
 def is_account_unverified(db: Session, email: str, username: str):
@@ -138,19 +149,22 @@ def is_account_unverified(db: Session, email: str, username: str):
     Returns:
         _type_: User if exists or None
     """
-
-    return (
-        db.query(models.Users)
-        .filter(
+    result = db.query(models.Users).filter(
             and_(
                 models.Users.email == email,
                 models.Users.is_validated == False,  # noqa: E712
                 models.Users.username == username,
             )
-        )
-        .first()
-        is not None
-    )
+        ).first()
+    
+    status = ResponseStatus.ERROR
+    origin = inspect.stack()[0].function
+    message = "User already registered"
+    if not result:
+        status = ResponseStatus.SUCCESS
+        message = ""
+    
+    return SystemResponse.internal_response(status, origin, message)
 
 
 def is_code_valid(db: Session, code: int, email: str) -> Union[bool, str]:
@@ -202,29 +216,6 @@ def is_location_address(location: str) -> bool:
     """
 
     return isinstance(location, str)
-
-
-def generate_code(db: Session) -> int:
-    """Generates unique random code
-
-    Args:
-        db (Session): Database connection
-
-    Returns:
-        int: Code
-    """
-    while True:
-        validation_code = ""
-        validation_code = "".join(random.choices(string.digits, k=6))
-        if (
-            not db.query(models.Users)
-            .filter(and_(models.Users.code == validation_code))
-            .first()
-        ):  # noqa: E712
-            break
-
-    return validation_code
-
 
 def split_dict_to_array(input_dict: dict[int, datetime]) -> list[datetime]:
     start, end = [], []

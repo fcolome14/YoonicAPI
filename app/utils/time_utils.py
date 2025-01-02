@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import List, Tuple, Union
 
-from app.responses import SystemResponse
+from app.responses import SystemResponse, InternalResponse
 from app.schemas.schemas import ResponseStatus
 import inspect
 
@@ -15,7 +15,9 @@ from dateutil.relativedelta import relativedelta
 from timezonefinder import TimezoneFinder
 
 
-def is_start_before_end(start: datetime, end: datetime) -> InterruptedError:
+def is_start_before_end(
+    start: datetime, 
+    end: datetime) -> InternalResponse:
     """
     Checks if a starting date is before an ending date
 
@@ -24,7 +26,7 @@ def is_start_before_end(start: datetime, end: datetime) -> InterruptedError:
         end (datetime): Ending date
 
     Returns:
-        InterruptedError: Internal response
+        InternalResponse: Internal response
     """
     status = ResponseStatus.ERROR
     origin = inspect.stack()[0].function
@@ -33,7 +35,7 @@ def is_start_before_end(start: datetime, end: datetime) -> InterruptedError:
         return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, True)
     return SystemResponse.internal_response(status, origin, "Ending date must be after starting")
 
-def is_date_expired(date: datetime) -> InterruptedError:
+def is_date_expired(date: datetime) -> InternalResponse:
     """
     Checks if a given date has passed the current time
 
@@ -41,7 +43,7 @@ def is_date_expired(date: datetime) -> InterruptedError:
         date (datetime): Date to validate
 
     Returns:
-        InterruptedError: Internal response
+        InternalResponse: Internal response
     """
     origin = inspect.stack()[0].function
     
@@ -52,7 +54,7 @@ def is_date_expired(date: datetime) -> InterruptedError:
 
 def convert_to_utc(
     datetime_obj: datetime
-    ) -> InterruptedError:
+    ) -> InternalResponse:
     """
     Convert a date object to UTC
 
@@ -60,7 +62,7 @@ def convert_to_utc(
         datetime_obj (datetime): Date time aware (Includes TZ)
 
     Returns:
-        InterruptedError: Internal response
+        InternalResponse: Internal response
     """
     
     origin = inspect.stack()[0].function
@@ -71,7 +73,7 @@ def convert_to_utc(
 
 def convert_naive_to_utc(
     datetime_obj: datetime, 
-    timezone_str: str) -> InterruptedError:
+    timezone_str: str) -> InternalResponse:
     """
     Convert a naive date to UTC
 
@@ -80,7 +82,7 @@ def convert_naive_to_utc(
         timezone_str (str): Valid TZ string
 
     Returns:
-        InterruptedError: Internal response
+        InternalResponse: Internal response
     """
     
     origin = inspect.stack()[0].function
@@ -104,7 +106,7 @@ def convert_naive_to_utc(
 def repeat_daily(
     start: datetime, 
     end: datetime, 
-    occurrences: int = 1) -> InterruptedError:
+    occurrences: int = 1) -> InternalResponse:
     """
     Repeat provided dates daily
 
@@ -114,7 +116,7 @@ def repeat_daily(
         occurrences (int, optional): Number of occurrences. Defaults to 1.
 
     Returns:
-        InterruptedError: Internal response
+        InternalResponse: Internal response
     """
     repeats_dict = {}
     repeats = []
@@ -139,7 +141,7 @@ def repeat_weekly(
     start: Union[datetime, List[datetime]],
     end: Union[datetime, List[datetime]],
     occurrences: int = 1,
-) -> InterruptedError:
+) -> InternalResponse:
     """
     Repeat weekly a given start and ending dates
 
@@ -149,7 +151,7 @@ def repeat_weekly(
         occurrences (int, optional): Number of occurrences. Defaults to 1.
 
     Returns:
-        InterruptedError: Internal response
+        InternalResponse: Internal response
     """
     repeats = []
     repeats_dict = {}
@@ -197,8 +199,7 @@ def repeat_weekly(
 def repeat_monthly(
     start: Union[datetime, List[datetime]],
     end: Union[datetime, List[datetime]],
-    occurrences: int = 1,
-) -> InterruptedError:
+    occurrences: int = 1) -> InternalResponse:
     """
     Repeat monthly a given start and ending dates
 
@@ -208,7 +209,7 @@ def repeat_monthly(
         occurrences (int, optional): Number of occurrences. Defaults to 1.
 
     Returns:
-        InterruptedError: Internal response
+        InternalResponse: Internal response
     """
     repeats = []
     repeats_dict = {}
@@ -255,8 +256,7 @@ def repeat_monthly(
 def repeat_yearly(
     start: Union[datetime, List[datetime]],
     end: Union[datetime, List[datetime]],
-    occurrences: int = 1,
-) -> InterruptedError:
+    occurrences: int = 1) -> InternalResponse:
     """
     Repeat yearly a given start and ending dates
 
@@ -266,7 +266,7 @@ def repeat_yearly(
         occurrences (int, optional): Number of occurrences. Defaults to 1.
 
     Returns:
-        InterruptedError: Internal response
+        InternalResponse: Internal response
     """
     repeats = []
     repeats_dict = {}
@@ -313,7 +313,7 @@ def repeat_yearly(
 def repeat_weekday(
     start: datetime, 
     end: datetime, 
-    occurrences: int = 1) -> InterruptedError:
+    occurrences: int = 1) -> InternalResponse:
     """
     Repeat provided dates for weekdays
 
@@ -323,7 +323,7 @@ def repeat_weekday(
         occurrences (int, optional): Number of occurrences. Defaults to 1.
 
     Returns:
-        InterruptedError: Internal response
+        InternalResponse: Internal response
     """
     repeats = []
     repeats_dict = {}
@@ -347,7 +347,7 @@ def repeat_weekday(
 def repeat_weekend(
     start, 
     end, 
-    occurrences) -> InterruptedError:
+    occurrences) -> InternalResponse:
     """
     Repeat provided dates for weekends
 
@@ -357,7 +357,7 @@ def repeat_weekend(
         occurrences (int, optional): Number of occurrences. Defaults to 1.
 
     Returns:
-        InterruptedError: Internal response
+        InternalResponse: Internal response
     """
     repeats = []
     repeats_dict = {}
@@ -378,11 +378,10 @@ def repeat_weekend(
         origin, 
         repeats_dict)
 
-
-def set_week_days(
+def set_weekdays(
     start: datetime, 
     end: datetime, 
-    target_days: List[int]) -> List[Tuple[datetime, datetime]]:
+    target_days: List[int]) -> InternalResponse:
     """
     Generate ranges of datetimes (start, end) aligned to specified target weekdays.
 
@@ -392,7 +391,7 @@ def set_week_days(
         target_days (List[int]): Weekdays to align to (0=Monday, 6=Sunday).
 
     Returns:
-        List[Tuple[datetime, datetime]]: List of (start, end) ranges for the target weekdays.
+        InternalResponse: Internal response
     """
     origin = inspect.stack()[0].function
     status = ResponseStatus.ERROR
@@ -407,13 +406,10 @@ def set_week_days(
         "Must provide target days")
 
     target_days = sorted(set(target_days))
-    result = []
-    result_dict = {}
-    index = 1
+    result, result_dict, index = [], {}, 1
 
     result.append((start, end))
-    result_dict[0] = result
-    result = []
+    result_dict[0], result = result, []
 
     for target_day in target_days:
         days_until_target = (target_day - start.weekday() + 7) % 7
@@ -433,20 +429,59 @@ def set_week_days(
         origin, 
         result_dict)
 
-
-def is_valid_datetime(date_string: str, format: str = "%Y-%m-%d %H:%M:%S.%f") -> bool:
+def is_valid_date(
+    date_string: str,
+    format: str = "%Y-%m-%d %H:%M:%S.%f"
+) -> InternalResponse:
     """
-    Check if the given string can be parsed into a datetime using the specified format.
+    Check if a given string is a date
 
-    :param date_string: The string to check.
-    :param format: The datetime format to match against. Defaults to "%Y-%m-%d %H:%M:%S.%f".
-    :return: True if valid, False otherwise.
+    Args:
+        date_string (str): Date string
+        format (_type_, optional): Expected format. Defaults to "%Y-%m-%d %H:%M:%S.%f".
+
+    Returns:
+        InternalResponse: Internal response
     """
+    origin = inspect.stack()[0].function
+    status = ResponseStatus.ERROR
+
+    if format is None:  # Handle cases where format is not provided
+        return SystemResponse.internal_response(
+            status, 
+            origin, 
+            f"Invalid format: {format}"
+        )
     try:
         datetime.strptime(date_string, format)
-        return True
-    except ValueError:
-        return False
+        return SystemResponse.internal_response(
+            ResponseStatus.SUCCESS,
+            origin,
+            True
+        )
+    except ValueError as exc:
+        return SystemResponse.internal_response(
+            status,
+            origin,
+            f"Value error: {exc}"
+        )
 
-def compute_expiration_time() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=pytz.utc) + timedelta(minutes=settings.email_code_expire_minutes)
+def compute_expiration_time() -> InternalResponse:
+    """
+    Compute expiration time
+
+    Returns:
+        InternalResponse: Internal response
+    """
+    origin = inspect.stack()[0].function
+    status = ResponseStatus.SUCCESS
+    exp_date = datetime.now(
+        timezone.utc).replace(
+        tzinfo=pytz.utc) + timedelta(
+        minutes=settings.email_code_expire_minutes)
+        
+    return SystemResponse.internal_response(
+            status,
+            origin,
+            exp_date
+            )

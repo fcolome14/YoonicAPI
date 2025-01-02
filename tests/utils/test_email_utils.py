@@ -14,7 +14,7 @@ from app.models import Users
 import app.models as models
 from app.utils import email_utils
 from app.services.auth_service import AuthService
-from app.utils.data_utils import validate_email
+from app.utils.fetch_data_utils import validate_email
 
 class MockEmailService:
     

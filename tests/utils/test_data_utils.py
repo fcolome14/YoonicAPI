@@ -5,7 +5,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.schemas.schemas import InternalResponse, ResponseStatus
 from app.models import Users
-from app.utils.data_utils import (validate_email, 
+from app.utils.fetch_data_utils import (validate_email, 
                                   get_user_data, 
                                   get_code_owner)
 

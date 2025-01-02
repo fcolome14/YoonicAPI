@@ -98,7 +98,7 @@ class TestHeaderPostService:
         mock_expected_output_succeed
         ):
         
-        mocker.patch.object(HeaderPostsService, "_validate_basic_fields", return_value=None)
+        mocker.patch.object(HeaderPostsService, "_validate_header_basic_fields", return_value=None)
         mocker.patch.object(HeaderPostsService, "_validate_location", return_value=mock_location_succeed)
         db_session.query().filter().first.return_value=mock_fetched_category
         
@@ -106,7 +106,7 @@ class TestHeaderPostService:
         
         assert result == mock_expected_output_succeed
     
-    @pytest.mark.parametrize("categoryError, _validate_basic_fieldsError, _validate_locationError, message", [
+    @pytest.mark.parametrize("categoryError, _validate_header_basic_fieldsError, _validate_locationError, message", [
         (True, False, False, "Category not found"),
         (False, True, False, ["Title field is empty", "Description field is empty", "Category field is empty"]),
         (False, False, True, "A location must be provided"),
@@ -122,7 +122,7 @@ class TestHeaderPostService:
         mock_expected_output_error,
         message,
         categoryError,
-        _validate_basic_fieldsError,
+        _validate_header_basic_fieldsError,
         _validate_locationError
         ):
         
@@ -131,14 +131,14 @@ class TestHeaderPostService:
         
         if categoryError:
             mock_fetched_category = None
-        if _validate_basic_fieldsError:
+        if _validate_header_basic_fieldsError:
             mock_validation_error = mock_expected_output_error
             mock_validation_error["details"] = message
         if _validate_locationError:
             mock_location_error = mock_expected_output_error
             mock_location_error["details"] = message
             
-        mocker.patch.object(HeaderPostsService, "_validate_basic_fields", return_value=mock_validation_error)
+        mocker.patch.object(HeaderPostsService, "_validate_header_basic_fields", return_value=mock_validation_error)
         mocker.patch.object(HeaderPostsService, "_validate_location", return_value=mock_location_error)
         mock_expected_output_error["details"] = message
         db_session.query().filter().first.return_value=mock_fetched_category
@@ -182,8 +182,8 @@ class TestHeaderPostService:
         mock_expected_output_succeed,
         mock_header_record_dict
     ):
-        mocker.patch.object(HeaderPostsService, "_validate_basic_fields", return_value=None)
-        mocker.patch.object(HeaderPostsService, "_validate_basic_fields", return_value=mock_location_succeed)
+        mocker.patch.object(HeaderPostsService, "_validate_header_basic_fields", return_value=None)
+        mocker.patch.object(HeaderPostsService, "_validate_header_basic_fields", return_value=mock_location_succeed)
         mock_expected_output_succeed["details"] = {
             "message": "Approved header", 
             "header": mock_header_record_dict
@@ -196,12 +196,12 @@ class TestHeaderPostService:
     
 class TestHeaderPostServiceHelpers:
     
-    def test__validate_basic_fields_succeed(
+    def test__validate_header_basic_fields_succeed(
         self, 
         mock_header_input
         ):
         
-        result = HeaderPostsService._validate_basic_fields(mock_header_input)
+        result = HeaderPostsService._validate_header_basic_fields(mock_header_input)
         
         assert result == None  # noqa: E711
 
@@ -210,7 +210,7 @@ class TestHeaderPostServiceHelpers:
         ("description", "", "Description field is empty"),
         ("category", None, "Category field is empty")
     ])
-    def test__validate_basic_fields_errors(
+    def test__validate_header_basic_fields_errors(
         self,
         mock_header_input,
         field_name,
@@ -221,7 +221,7 @@ class TestHeaderPostServiceHelpers:
         setattr(mock_header_input, field_name, field_value)
         mock_expected_output_error["details"] = message
         
-        result = HeaderPostsService._validate_basic_fields(mock_header_input)
+        result = HeaderPostsService._validate_header_basic_fields(mock_header_input)
         
         assert result == mock_expected_output_error
     

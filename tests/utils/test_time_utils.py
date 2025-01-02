@@ -3,9 +3,10 @@ from zoneinfo import ZoneInfo
 
 from app.responses import SystemResponse
 from app.schemas.schemas import ResponseStatus, InternalResponse
-import inspect
+from app.config import settings
 
 import pdb
+import pytz
 import copy
 
 import pytest
@@ -14,6 +15,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.utils import time_utils
 
+#TODO: REFACTOR
 
 @pytest.fixture
 def expected_output():
@@ -644,7 +646,7 @@ class TestTimeUtils:
         
         assert result == expected_output
     
-    def test_set_week_days_succeed(
+    def test_set_weekdays_succeed(
         self,
         mocker: MockerFixture,
         target_days_mapping,
@@ -664,14 +666,94 @@ class TestTimeUtils:
         expected_start_before_end_output.origin = "is_start_before_end"
         expected_start_before_end_output.message = True
         
-        expected_output.origin = "set_week_days"
+        expected_output.origin = "set_weekdays"
         expected_output.message = schedule_dict
         
         mocker.patch("app.utils.time_utils.is_start_before_end", 
                      return_value=expected_start_before_end_output)
         
-        result: InternalResponse = time_utils.set_week_days(start, end, target_days)
+        result: InternalResponse = time_utils.set_weekdays(start, end, target_days)
         expected_output.timestamp = result.timestamp
         
         assert result == expected_output
     
+    def test_set_weekdays_errors(
+        self,
+        mocker: MockerFixture,
+        target_days_mapping,
+        expected_output: InternalResponse) -> InternalResponse:
+        
+        start, end, target_days = target_days_mapping
+        
+        expected_output.status = ResponseStatus.ERROR
+        expected_start_before_end_output = copy.deepcopy(expected_output)
+        
+        expected_start_before_end_output.origin = "is_start_before_end"
+        expected_start_before_end_output.message = "Ending date must be after starting"
+        
+        expected_output.origin = expected_start_before_end_output.origin
+        expected_output.message = expected_start_before_end_output.message
+        
+        mocker.patch("app.utils.time_utils.is_start_before_end", 
+                     return_value=expected_start_before_end_output)
+        
+        result: InternalResponse = time_utils.set_weekdays(start, end, target_days)
+        expected_output.timestamp = result.timestamp
+        
+        assert result == expected_output
+    
+    def test_is_valid_date_succeed(
+        self,
+        expected_output: InternalResponse) -> InternalResponse:
+        
+        date = "2024-12-18T07:00:08.633Z"
+        format = "%Y-%m-%dT%H:%M:%S.%fZ"
+        
+        expected_output.status = ResponseStatus.SUCCESS
+        expected_output.origin = "is_valid_date"
+        expected_output.message = True
+        
+        result: InternalResponse = time_utils.is_valid_date(date, format)
+        expected_output.timestamp = result.timestamp
+        
+        assert result == expected_output
+    
+    @pytest.mark.parametrize("date, format, message", [
+        ("2024-12-18T07:00:08.633Z", None, "Invalid format: None"),
+        ("Invalid-Date", 
+        "%Y-%m-%dT%H:%M:%S.%fZ", 
+        "Value error: time data 'Invalid-Date' does not match format '%Y-%m-%dT%H:%M:%S.%fZ'"),
+        ])
+    def test_is_valid_date_errors(
+        self,
+        expected_output: InternalResponse,
+        date, 
+        format, 
+        message) -> InternalResponse:
+
+        expected_output.status = ResponseStatus.ERROR
+        expected_output.origin = "is_valid_date"
+        expected_output.message = message
+        
+        result = time_utils.is_valid_date(date, format)
+        expected_output.timestamp = result.timestamp
+        
+        assert result == expected_output
+        
+    def test_compute_expiration_time_succeed(
+        self,
+        expected_output: InternalResponse) -> InternalResponse:
+        
+        date = datetime.now(
+        timezone.utc).replace(
+        tzinfo=pytz.utc) + timedelta(
+        minutes=settings.email_code_expire_minutes)
+        
+        expected_output.status = ResponseStatus.SUCCESS
+        expected_output.origin = "compute_expiration_time"
+        expected_output.message = date
+        
+        result = time_utils.compute_expiration_time()
+        expected_output.timestamp = result.timestamp
+        
+        assert result == expected_output

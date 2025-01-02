@@ -13,6 +13,8 @@ class GenerateStructureService:
         Returns:
             dict: Header record converted to dict
         """
-        return {
+        result = {
             column.name: getattr(header, column.name) 
             for column in header.__table__.columns} if header else None
+        result.pop("geom", None)
+        return result

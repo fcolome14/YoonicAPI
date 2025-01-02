@@ -3,7 +3,8 @@ from app.schemas.schemas import ResponseStatus
 from app.schemas.schemas import InternalResponse
 import inspect
 from sqlalchemy.orm import Session
-from  app.models import Users
+from  app.models import Users, EventsHeaders
+from app.services.common.structures import GenerateStructureService
 from sqlalchemy import and_
 
 def validate_email(db: Session, email: str) -> InternalResponse:
@@ -104,3 +105,22 @@ def get_code_owner(db: Session, code: int) -> InternalResponse:
         message = f"Database error raised: {exc}"
     
     return SystemResponse.internal_response(status, origin, message)
+
+def pending_headers(db: Session, user_id: int) -> InternalResponse:
+    origin = inspect.stack()[0].function
+    
+    fetched_header = (
+    db.query(EventsHeaders)
+    .filter(
+        and_(
+            EventsHeaders.status == 1,
+            EventsHeaders.owner_id == user_id,
+        )
+    )
+    .first()
+    )
+
+    if not fetched_header:
+        return SystemResponse.internal_response(ResponseStatus.ERROR, origin, "Record not found")
+    data = GenerateStructureService.generate_header_structure(fetched_header)
+    return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, data)

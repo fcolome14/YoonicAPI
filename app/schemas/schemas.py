@@ -71,10 +71,34 @@ class NewPostHeaderInput(BaseModel):
     title: str
     description: Optional[str] = None
     location: Union[
-        str, Tuple[float, float]
-    ]  # Allow address "str" or coordinates [x, y]
+        str, 
+        Tuple[float, float]
+    ]
     category: int
     status: int
+
+class NewPostLinesInput(BaseModel):
+    header_id: int
+    user_timezone: str
+    line: Optional[
+        Union[
+            EventLines, 
+            List[EventLines]
+            ]
+        ] = None
+    repeat: bool
+    custom_option_selected: bool
+    when_to: Optional[int] = (
+        None  # Possible values: 0, 1, 2, 3 (or 4) if custom_selected = true
+    )
+    occurrences: Optional[int] = None
+    for_days: Optional[Tuple[int, ...]] = Field(
+        None,
+        description="Optional array of days (0-6, where 0=Monday, 6=Sunday) to repeat the event.",
+    )
+    custom_each_day: Optional[bool] = None
+    until_to: Optional[Union[int, Tuple[int, Union[datetime, int]]]] = None
+    custom_lines: Optional[List[EventLines]] = None
 
 
 class NewPostInput(BaseModel):

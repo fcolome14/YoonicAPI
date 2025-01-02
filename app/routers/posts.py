@@ -2,6 +2,9 @@ import pytz
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import and_, desc, or_
 from sqlalchemy.orm import Session
+from app.schemas.schemas import ResponseStatus
+from app.schemas.schemas import InternalResponse
+import inspect
 
 import app.models as models
 from app.database.connection import get_db
@@ -9,34 +12,27 @@ from app.oauth2 import get_user_session
 from app.schemas import schemas
 from app.services.event_service import EventDeleteService
 from app.services.retrieve_service import RetrieveService
-from app.services.post_service import HeaderPostsService
 from app.responses import SuccessHTTPResponse, ErrorHTTPResponse
-from app.utils import email_utils
+from app.utils import email_utils, fetch_data_utils
+from app.services.post_service import HeaderPostsService, LinesPostService
 
 router = APIRouter(prefix="/posts", tags=["Posts"])
 utc = pytz.UTC
 
 
 @router.get(
-    "/new_post", status_code=status.HTTP_200_OK, response_model=schemas.SuccessResponse
+    "/new-post", status_code=status.HTTP_200_OK, response_model=schemas.SuccessResponse
 )
 def new_post(
     db: Session = Depends(get_db),
     user_id: int = Depends(get_user_session),
     request: Request = None,
 ):
-    result = HeaderPostsService.fetch_pending_headers(db, user_id) 
-    if result["status"] == "error":
-        raise ErrorHTTPResponse.error_response(
-            "FetchHeader", result.get("details"), None
-        )
-    
-    message, header = result["details"]
-    return SuccessHTTPResponse.success_response(message, header, request)
-
+    result: InternalResponse = fetch_data_utils.pending_headers(db, user_id) 
+    return SuccessHTTPResponse.success_response("Fetch any pending header", result.message, request)
 
 @router.post(
-    "/create_header",
+    "/create-header",
     status_code=status.HTTP_200_OK,
     response_model=schemas.SuccessResponse,
 )
@@ -46,15 +42,33 @@ async def create_header(
     user_id: int = Depends(get_user_session),
     request: Request = None,
 ):
-
-    result = await HeaderPostsService.process_header(
+    result: InternalResponse = await HeaderPostsService.process_header(
         db=db, user_id=user_id, posting_header=posting_data
     )
-    if result.get("status") == "error":
+    if result.status == ResponseStatus.ERROR:
         raise ErrorHTTPResponse.error_response(
-            "CreateHeader", result.get("details"), None
+            "CreateHeader", status.HTTP_500_INTERNAL_SERVER_ERROR, result.message, None
         )
-    return SuccessHTTPResponse.success_response(result.get("message"), result.get("header"), request)
+    return SuccessHTTPResponse.success_response("CreateHeader", result.message, request)
+
+@router.post(
+    "/create-lines",
+    status_code=status.HTTP_200_OK,
+    response_model=schemas.SuccessResponse,
+)
+async def create_lines(
+    posting_data: schemas.NewPostLinesInput,
+    user_id: int = Depends(get_user_session),
+    request: Request = None,
+):
+    lines = LinesPostService(user_id, posting_data)
+    result: InternalResponse = await lines.process_lines()
+    if result.status == ResponseStatus.ERROR:
+        raise ErrorHTTPResponse.error_response(
+            "CreateLines", status.HTTP_500_INTERNAL_SERVER_ERROR, result.message, None
+        )
+    generated_lines: InternalResponse = result.message.message
+    return SuccessHTTPResponse.success_response("CreateLines", generated_lines, request)
 
 
 @router.get(

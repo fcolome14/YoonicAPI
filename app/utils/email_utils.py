@@ -7,7 +7,7 @@ from string import Template
 from app.responses import SystemResponse
 from app.schemas.schemas import ResponseStatus
 import inspect
-from app.utils.data_utils import (validate_email, 
+from app.utils.fetch_data_utils import (validate_email, 
                                   get_user_data,
                                   get_code_owner)
 
@@ -48,8 +48,6 @@ def is_email_taken(db: Session, email: str) -> InternalResponse:
     if result.status == ResponseStatus.ERROR and result.message == "Not found":
         return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, "Email available")
     return result
-
-
 
 def send_auth_code(db: Session, email: str, template: int = 0):
     """Send email with an authentication generated code
@@ -184,7 +182,6 @@ def send_email(email: str, subject: str, html_content: str):
         return SystemResponse.internal_response(status, origin, "Failed to connect to the SMTP server")
     except Exception as e:
         return SystemResponse.internal_response(status, origin, f"An unexpected error occurred: {str(e)}")
-
 
 def resend_auth_code(db: Session, code: int):
     origin = inspect.stack()[0].function

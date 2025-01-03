@@ -63,7 +63,7 @@ def send_auth_code(db: Session, email: str, template: int = 0):
     status = ResponseStatus.ERROR
     origin = inspect.stack()[0].function
     
-    result = AuthService.generate_code(db)
+    result: InternalResponse = AuthService.generate_code(db)
     if result.status == ResponseStatus.ERROR:
         return result
     verification_code = result.message
@@ -104,7 +104,7 @@ def send_auth_code(db: Session, email: str, template: int = 0):
         verification_code=verification_code,
     )
 
-    response = send_email(email, subject, html_content)
+    response: InternalResponse = send_email(email, subject, html_content)
     if response.status== ResponseStatus.ERROR:
         return response
     return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, verification_code)
@@ -194,4 +194,4 @@ def resend_auth_code(db: Session, code: int):
     send_result: InternalResponse = send_auth_code(db, user.email)
     if send_result.status == ResponseStatus.ERROR:
         return send_result.status
-    return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, send_result.message)
+    return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, (send_result.message, user))

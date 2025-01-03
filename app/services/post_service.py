@@ -11,8 +11,8 @@ from typing import List
 
 from datetime import datetime, timezone
 from app.models import Categories, EventsHeaders
-from app.schemas import NewPostHeaderInput, NewPostLinesInput, EventLines
-from app.utils import maps_utils, utils, time_utils
+from app.schemas import NewPostHeaderInput, NewPostLinesInput, EventLines, NewPostLinesConfirmInput
+from app.utils import maps_utils, utils, time_utils, fetch_data_utils
 from app.services.common.structures import GenerateStructureService
 from app.services.repeater_service import (select_repeater_single_mode,
                                            select_repeater_custom_mode)
@@ -386,16 +386,18 @@ class LinesPostService:
                 "start": value[0] if not isinstance(value, list) else value[0][0],
                 "end": value[1] if not isinstance(value, list) else value[0][1],
                 "isPublic": result[0],
-                "capacity": result[1]
+                "capacity": result[1],
+                "rates": self.rates[int(key)] if (self.custom_option_selected and self.custom_each_day) else self.rates
             }
 
-        def pack_repeated(_, value, is_pub, cap):
+        def pack_repeated(key, value, is_pub, cap):
             return [
                 {
                     "start": pair[0],
                     "end": pair[1],
                     "isPublic": is_pub,
-                    "capacity": cap
+                    "capacity": cap,
+                    "rates": self.rates[int(key)] if (self.custom_option_selected and self.custom_each_day) else self.rates
                 }
                 for pair in value
             ]
@@ -408,7 +410,7 @@ class LinesPostService:
                 isPublic = self.is_public[0]
             
             if isinstance(self.capacity, list) and len(self.capacity) > 1:
-                isPublic = self.capacity[key]
+                capacity = self.capacity[key]
             elif isinstance(self.capacity, list) and len(self.capacity) == 1:
                 capacity = self.capacity[0]
             return (isPublic, capacity)
@@ -454,3 +456,22 @@ class LinesPostService:
                 key: pack_repeated(key, value, is_pub, cap)
                 for (key, value), is_pub, cap in zip(generated_lines.items(), self.is_public, self.capacity)
             }
+class PostConfirmation:
+    def __init__(self, user_id: int, posting_data: NewPostLinesConfirmInput):
+        self.user_id = user_id
+        self.posting_data = posting_data
+    
+
+    def add_post(self, db: Session):
+        origin = inspect.stack()[0].function
+        result: InternalResponse = fetch_data_utils.add_post(
+                                         db, 
+                                         self.user_id, 
+                                         self.posting_data.header_id, 
+                                         self.posting_data.lines)
+        if result.status == ResponseStatus.ERROR:
+            return result
+        return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, result.message)
+        
+        
+            

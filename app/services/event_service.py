@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 from app.models import EventsHeaders, EventsLines, Rates
 from app.schemas import DeletePostInput, NewPostInput, RateDetails
 from app.schemas.bases import UpdateChanges
-from app.services.rate_service import RateService, pack_rates
 from app.services.repeater_service import (select_repeater_custom_mode,
                                            select_repeater_single_mode)
 from app.utils import maps_utils, time_utils, utils

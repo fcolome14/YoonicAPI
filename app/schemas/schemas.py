@@ -99,7 +99,10 @@ class NewPostLinesInput(BaseModel):
     custom_each_day: Optional[bool] = None
     until_to: Optional[Union[int, Tuple[int, Union[datetime, int]]]] = None
     custom_lines: Optional[List[EventLines]] = None
-
+    
+class NewPostLinesConfirmInput(BaseModel):
+    header_id: int
+    lines: Any
 
 class NewPostInput(BaseModel):
     """New posts"""

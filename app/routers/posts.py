@@ -4,7 +4,6 @@ from sqlalchemy import and_, desc, or_
 from sqlalchemy.orm import Session
 from app.schemas.schemas import ResponseStatus
 from app.schemas.schemas import InternalResponse
-import inspect
 
 import app.models as models
 from app.database.connection import get_db
@@ -14,7 +13,7 @@ from app.services.event_service import EventDeleteService
 from app.services.retrieve_service import RetrieveService
 from app.responses import SuccessHTTPResponse, ErrorHTTPResponse
 from app.utils import email_utils, fetch_data_utils
-from app.services.post_service import HeaderPostsService, LinesPostService
+from app.services.post_service import HeaderPostsService, LinesPostService, PostConfirmation
 
 router = APIRouter(prefix="/posts", tags=["Posts"])
 utc = pytz.UTC
@@ -70,6 +69,24 @@ async def create_lines(
     generated_lines: InternalResponse = result.message.message
     return SuccessHTTPResponse.success_response("CreateLines", generated_lines, request)
 
+@router.post(
+    "/confirm-post",
+    status_code=status.HTTP_200_OK,
+    response_model=schemas.SuccessResponse,
+)
+def confirm_post(
+    posting_data: schemas.NewPostLinesConfirmInput,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_user_session),
+    request: Request = None,
+):
+    post = PostConfirmation(user_id, posting_data)
+    result: InternalResponse = post.add_post(db)
+    if result.status == ResponseStatus.ERROR:
+        raise ErrorHTTPResponse.error_response(
+            "ConfirmPost", status.HTTP_500_INTERNAL_SERVER_ERROR, result.message, None
+        )
+    return SuccessHTTPResponse.success_response("ConfirmPost", "Post created successfully", request)
 
 @router.get(
     "/nearby-events",

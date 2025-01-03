@@ -1,15 +1,11 @@
-from datetime import datetime, timedelta, timezone
 from enum import Enum
 
-from app.responses import SystemResponse
 from app.schemas.schemas import ResponseStatus
-import inspect
 
 import pytz
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security.oauth2 import OAuth2PasswordRequestForm
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
 from app.models import Users, TokenTable
@@ -22,8 +18,8 @@ from app.schemas.schemas import (ResponseStatus,
                                  RecoveryCodeInput)
 from app.config import settings
 from app.database.connection import get_db
-from app.utils import email_utils, utils
-from app.responses import ErrorHTTPResponse, SuccessHTTPResponse
+from app.utils import email_utils, utils, fetch_data_utils
+from app.responses import ErrorHTTPResponse, SuccessHTTPResponse, InternalResponse
 from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -62,7 +58,9 @@ def login(
         _type_: Session JWT
     """
 
-    result = AuthService.validate_user(db, user_credentials.username)
+    result = AuthService.validate_user(db, 
+                                       user_credentials.username, 
+                                       user_credentials.password)
     if result.status == ResponseStatus.ERROR:
         raise ErrorHTTPResponse.error_response(
             AuthTypes.LOGIN, 
@@ -71,13 +69,6 @@ def login(
             details="User not found")
     
     user: Users = result.message
-    if not utils.is_password_valid(user_credentials.password, user.password):
-        raise ErrorHTTPResponse.error_response(
-            AuthTypes.LOGIN, 
-            status.HTTP_401_UNAUTHORIZED,
-            message="Invalid Credentials",
-            details="Invalid password")
-        
     access_token = oauth2.create_access_token(data={"user_id": user.id})
     return SuccessHTTPResponse.success_response(
         message="Login succeed",
@@ -161,7 +152,7 @@ def register_user(
     db: Session = Depends(get_db),
     request: Request = None,
 ):
-    result = AuthService.validate_register(db, user_credentials)
+    result: InternalResponse = AuthService.validate_register(db, user_credentials)
     if result.status == ResponseStatus.ERROR:
         raise ErrorHTTPResponse.error_response(
             AuthTypes.REGISTER, 
@@ -208,30 +199,29 @@ def verify_code(
     """Validation of provided code
 
     Args:
-        token (str): _description_
-        db (Session, optional): _description_. Defaults to Depends(get_db).
-        request (Request, optional): _description_. Defaults to None.
+        token (str): Received JWT
+        db (Session, optional): Connection session. Defaults to Depends(get_db).
+        request (Request, optional): Request metadata. Defaults to None.
 
     Raises:
-        HTTPException: _description_
+        HTTPException: Found errors while validating code
 
     Returns:
-        schemas.SuccessResponse: _description_
+        schemas.SuccessResponse: Validating code succeed
     """
 
-    decoded_token = oauth2.decode_email_code_token(token)
-    if decoded_token.get("status") == "error":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=ErrorDetails(
-                type="VerifyCode", message=decoded_token.get("message"), details=None
-            ).model_dump(),
-        )
+    result: InternalResponse = oauth2.decode_email_code_token(token)
+    if result.status == ResponseStatus.ERROR:
+        raise ErrorHTTPResponse.error_response(
+            AuthTypes.REGISTER, 
+            status.HTTP_401_UNAUTHORIZED,
+            message=result.message,
+            details=None)
         
-    email, code = decoded_token["email"], decoded_token["code"]
-    response = utils.is_code_valid(db, code, email)
-    if response.get("status") == "error":
-        message = response.get("details", "An error occurred during verification.")
+    email, code = result.message["email"], result.message["code"]
+    result = fetch_data_utils.validate_code(db, code, email)
+    if result.status == ResponseStatus.ERROR:
+        message = "An error occurred during verification."
         return templates.TemplateResponse(
             "code_verification_result.html",
             {
@@ -242,8 +232,8 @@ def verify_code(
             },
         )
 
-    user_verified = db.query(Users).filter(Users.code == code).first()
-    if not user_verified:
+    user: Users = result.message
+    if not user:
         message = "The user associated with this code was not found."
         return templates.TemplateResponse(
             "code_verification_result.html",
@@ -255,14 +245,15 @@ def verify_code(
             },
         )
 
-    user_verified.is_validated = True
-    user_verified.code = None
-    user_verified.code_expiration = None
-
-    db.commit()
-    db.refresh(user_verified)
-
-    message = response.get("details", "Your verification was successful!")
+    result = fetch_data_utils.add_user(db, user)
+    if result.status == ResponseStatus.ERROR:
+        raise ErrorHTTPResponse.error_response(
+            AuthTypes.REGISTER, 
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            message=result.message,
+            details=None)
+        
+    message = "Your verification was successful!"
     return templates.TemplateResponse(
         "code_verification_result.html",
         {
@@ -299,8 +290,8 @@ def refresh_code(
     Returns:
         schemas.SuccessResponse: _description_
     """
-
-    if utils.is_code_expired(db=db, email=email_refresh.email, code=email_refresh.code):
+    result: InternalResponse = fetch_data_utils.validate_code(db, email_refresh.code, email_refresh.email)
+    if result.status == ResponseStatus.SUCCESS:
         raise HTTPException(
             status_code=status.HTTP_406_NOT_ACCEPTABLE,
             detail=ErrorDetails(
@@ -309,43 +300,53 @@ def refresh_code(
                 details=None,
             ).model_dump(),
         )
-
-    code_response = email_utils.resend_auth_code(db, email_refresh.code)
-
-    if code_response.get("status") == "error":
+    if result.status == ResponseStatus.ERROR and result.origin != "is_date_expired":
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=status.HTTP_406_NOT_ACCEPTABLE,
             detail=ErrorDetails(
-                type="RefreshCode", message=code_response.get("message"), details=None
+                type="RefreshCode",
+                message=result.message,
+                details=None,
+            ).model_dump(),
+        )
+        
+    result = email_utils.resend_auth_code(db, email_refresh.code)
+    if result.status == ResponseStatus.ERROR:
+        raise HTTPException(
+            status_code=status.HTTP_406_NOT_ACCEPTABLE,
+            detail=ErrorDetails(
+                type="RefreshCode",
+                message=result.message[0],
+                details=None,
             ).model_dump(),
         )
 
-    user: Users = code_response.get("user")
-
+    code, user = result.message
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=ErrorDetails(
-                type="RefreshCode", message="User not found", details=None
+                type="RefreshCode", 
+                message="User not found", 
+                details=None
             ).model_dump(),
         )
 
-    user.code = code_response.get("new_code")
-    user.code_expiration = datetime.now(utc) + timedelta(
-        minutes=settings.email_code_expire_minutes
-    )
-
-    db.commit()
-    db.refresh(user)
-
-    return SuccessResponse(
-        status="success",
-        message="CodeRefresh",
-        data={},
-        meta={
-            "request_id": request.headers.get("request-id", "default_request_id"),
-            "client": request.headers.get("client-type", "unknown"),
-        },
+    result = fetch_data_utils.refresh_code(db, code, user.email, user.username)
+    if result.status == ResponseStatus.ERROR:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ErrorDetails(
+                type="RefreshCode", 
+                message=result.message, 
+                details=None
+            ).model_dump(),
+        )
+    
+    return SuccessHTTPResponse.success_response(
+        message="New validation code was sent via email",
+        attatched_data={},
+        request=request
     )
 
 
@@ -374,59 +375,43 @@ def password_recovery_code(
         schemas.SuccessResponse: _description_
     """
 
-    if (
-        not db.query(Users)
-        .filter(
-            and_(
-                Users.email == user_credentials.email,
-                Users.is_validated == True,
-            )
-        )
-        .first()
-    ):  # noqa: E712
+    result: InternalResponse = fetch_data_utils.validate_email(db, user_credentials.email)
+    if result.status == ResponseStatus.ERROR:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=ErrorDetails(
-                type="RecoveryCode", message="User not found", details=None
+                type="RecoveryCode", 
+                message=result.message, 
+                details=None
             ).model_dump(),
         )
-
-    code_response = email_utils.send_auth_code(db, user_credentials.email, 1)
-    if code_response.get("status") == "error":
+    user: Users = result.message
+    
+    result = email_utils.send_auth_code(db, user_credentials.email, 1)
+    if result.status == ResponseStatus.ERROR:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail=ErrorDetails(
-                type="RecoveryCode",
-                message=code_response.get("message"),
-                details="Sending validation email for password recovery code",
+                type="RecoveryCode", 
+                message=result.message, 
+                details="Sending validation email for password recovery code"
             ).model_dump(),
         )
 
-    user_recovery = (
-        db.query(Users)
-        .filter(
-            and_(
-                Users.email == user_credentials.email,
-                Users.is_validated == True,
-            )
+    code = result.message
+    result = fetch_data_utils.refresh_code(db, code, user.email, user.username, True)
+    if result.status == ResponseStatus.ERROR:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ErrorDetails(
+                type="RefreshCode", 
+                message=result.message, 
+                details=None
+            ).model_dump(),
         )
-        .first()
-    )  # noqa: E712
-
-    user_recovery.code = code_response.get("message")
-    user_recovery.code_expiration = datetime.now(utc) + timedelta(
-        minutes=settings.email_code_expire_minutes
-    )
-
-    db.commit()
-    db.refresh(user_recovery)
-
-    return SuccessResponse(
-        status="success",
-        message="Account recovery validation sent",
-        data={},
-        meta={
-            "request_id": request.headers.get("request-id", "default_request_id"),
-            "client": request.headers.get("client-type", "unknown"),
-        },
+    
+    return SuccessHTTPResponse.success_response(
+        message="New validation code was sent via email",
+        attatched_data={},
+        request=request
     )

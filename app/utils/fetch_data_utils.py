@@ -3,13 +3,15 @@ from app.schemas.schemas import ResponseStatus
 from app.schemas.schemas import InternalResponse
 import inspect
 from sqlalchemy.orm import Session
-from  app.models import Users, EventsHeaders
+from app.models import Users, EventsHeaders, EventsLines, Rates
 from app.services.common.structures import GenerateStructureService
-from sqlalchemy import and_
+from sqlalchemy import and_, or_
+from app.utils.time_utils import is_date_expired, compute_expiration_time
+from app.utils.utils import hash_password, is_password_valid
 
 def validate_email(db: Session, email: str) -> InternalResponse:
     """
-    Validate if email is available
+    Validate if email is available (account already exists in the database)
 
     Args:
         db (Session): DB Session
@@ -22,12 +24,12 @@ def validate_email(db: Session, email: str) -> InternalResponse:
     origin = inspect.stack()[0].function
     
     try:
-        result = db.query(Users).filter(and_(Users.email == email, Users.is_validated == True)).first() # noqa: E712
-        if not result:
+        user = db.query(Users).filter(and_(Users.email == email, Users.is_validated == True)).first() # noqa: E712
+        if not user:
             status = ResponseStatus.ERROR
             message = "Not found"
         else:
-            message = result
+            message = user
     except Exception as exc:
         status = ResponseStatus.ERROR
         message = f"Database error raised: {exc}"
@@ -70,6 +72,175 @@ def get_user_data(db: Session, user_id: int) -> InternalResponse:
         message = f"Database error raised: {exc}"
     
     return SystemResponse.internal_response(status, origin, message)
+
+def validate_username(db: Session, username: str) -> InternalResponse:
+    """
+    Get a registered username
+    
+    Args:
+        db (Session): DB Session
+        username (str): Provided username
+
+    Returns:
+        InternalResponse: Internal response
+    """
+
+    status = ResponseStatus.SUCCESS
+    origin = inspect.stack()[0].function
+    
+    try:
+        user = (
+            db.query(Users)
+            .filter(and_(
+                Users.username == username, 
+                Users.is_validated == True)).  # noqa: E712
+            first())
+        
+        if not user:
+            status = ResponseStatus.ERROR
+            message = "Not found"
+        else:
+            message = user
+    except Exception as exc:
+        status = ResponseStatus.ERROR
+        message = f"Database error raised: {exc}"
+    
+    return SystemResponse.internal_response(status, origin, message)
+
+def validate_account(db: Session, username: str, password: str) -> InternalResponse:
+
+    status = ResponseStatus.SUCCESS
+    origin = inspect.stack()[0].function
+    
+    try:
+        user = (
+            db.query(
+                Users)
+            .filter(and_(
+                Users.username == username,
+                Users.is_validated == True)).  # noqa: E712
+            first())
+        
+        if not user:
+            status = ResponseStatus.ERROR
+            message = "Not found"
+        else:
+            message = user
+    except Exception as exc:
+        status = ResponseStatus.ERROR
+        message = f"Database error raised: {exc}"
+    
+    return SystemResponse.internal_response(status, origin, message)
+
+def account_is_available(
+    db: Session, 
+    email: str, 
+    username: str) -> InternalResponse:
+
+    status = ResponseStatus.SUCCESS
+    origin = inspect.stack()[0].function
+    
+    try:
+        user = (
+            db.query(
+                Users)
+            .filter(or_(
+                Users.username == username,
+                Users.email == email)).
+            first())
+        
+        if not user:
+            message = "Not found"
+        else:
+            status = ResponseStatus.ERROR
+            message = user
+    except Exception as exc:
+        status = ResponseStatus.ERROR
+        message = f"Database error raised: {exc}"
+    
+    return SystemResponse.internal_response(status, origin, message)
+
+def validate_code(db: Session, code: int, email: str) -> InternalResponse:
+    """Check if a code has not expired yet and still exists
+
+    Args:
+        db (Session): Connection Session
+        code (int): Code to check
+        email (str): Email
+
+    Returns:
+        InternalResponse: Internal response
+    """
+    status = ResponseStatus.ERROR
+    origin = inspect.stack()[0].function
+    
+    fetched_record = (
+        db.query(Users)
+        .filter(and_(Users.code == code, 
+                     Users.email == email))
+        .first()
+    )
+
+    if not fetched_record or not fetched_record.code_expiration:
+        return SystemResponse.internal_response(status, origin, "Code not found")
+    result: InternalResponse = is_date_expired(fetched_record.code_expiration)
+    if result.status == ResponseStatus.ERROR:
+        return result
+    return SystemResponse.internal_response(ResponseStatus.SUCCESS, 
+                                            origin, 
+                                            fetched_record)
+
+def refresh_code(db: Session, 
+                 code: int, 
+                 email: str, 
+                 username: str,
+                 isRecovery: bool = False) -> InternalResponse:
+    
+    status = ResponseStatus.ERROR
+    origin = inspect.stack()[0].function
+    
+    user = (
+        db.query(Users)
+        .filter(and_(Users.username == username, 
+                     Users.email == email))
+        .first()
+    )
+    
+    if not user:
+            return SystemResponse.internal_response(status, origin, "User not found")
+    if not isRecovery:
+        if not user.code_expiration:
+            return SystemResponse.internal_response(status, origin, "Code not found")
+    
+    result = compute_expiration_time()
+    if result.status == ResponseStatus.ERROR:
+        return result
+    user.code = code
+    user.code_expiration = result.message
+    
+    result = update_db(db, user)
+    if result.status == ResponseStatus.ERROR:
+        return result
+    return SystemResponse.internal_response(ResponseStatus.SUCCESS, 
+                                            origin, 
+                                            user)
+    
+    
+def add_user(db: Session, user: Users):
+    origin = inspect.stack()[0].function
+    
+    user.is_validated = True
+    user.code = None
+    user.code_expiration = None
+    
+    result: InternalResponse = update_db(db, user)
+    if result.status == ResponseStatus.ERROR:
+        return result
+    return SystemResponse.internal_response(
+        ResponseStatus.SUCCESS, 
+        origin, 
+        result.message)
+
 
 def get_code_owner(db: Session, code: int) -> InternalResponse:
     """
@@ -124,3 +295,171 @@ def pending_headers(db: Session, user_id: int) -> InternalResponse:
         return SystemResponse.internal_response(ResponseStatus.ERROR, origin, "Record not found")
     data = GenerateStructureService.generate_header_structure(fetched_header)
     return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, data)
+
+def add_post(
+    db: Session,
+    user_id: int,
+    header_id: int, 
+    lines: any) -> InternalResponse:
+    origin = inspect.stack()[0].function
+    
+    result: InternalResponse = approve_header_status(db, user_id, header_id)
+    if result.status == ResponseStatus.ERROR:
+        return result
+    lines_result: InternalResponse = build_lines(header_id, lines)
+    if lines_result.status == ResponseStatus.ERROR:
+        return lines_result
+    result = commit_db(db, lines_result.message[0], True)
+    if result.status == ResponseStatus.ERROR:
+        return result
+    result = build_rates(lines_result.message)
+    if result.status == ResponseStatus.ERROR:
+        return result
+    result = commit_db(db, result.message, True)
+    if result.status == ResponseStatus.ERROR:
+        return result
+    return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, result.message)
+
+def commit_db(
+    db: Session, 
+    data: any, 
+    multiple: bool = False) -> InternalResponse:
+    origin = inspect.stack()[0].function
+    
+    if multiple:
+        db.add_all(data)
+        db.commit()
+        for line in data:
+            db.refresh(line)
+    else:
+        db.add(data)
+        db.commit()
+        db.refresh(data)
+    return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, data)
+
+def update_db(
+    db: Session, 
+    data: any) -> InternalResponse:
+    origin = inspect.stack()[0].function
+    
+    db.commit()
+    db.refresh(data)
+    return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, data)
+
+def build_rates(
+    result_lines: tuple
+    ) -> InternalResponse:
+    origin = inspect.stack()[0].function
+    
+    lines, rates = result_lines
+
+    if not isinstance(lines, list):
+        return SystemResponse.internal_response(
+            ResponseStatus.ERROR, 
+            origin, 
+            "Expected dict for lines"
+            )
+    if not isinstance(rates, list):
+        return SystemResponse.internal_response(
+            ResponseStatus.ERROR, 
+            origin, 
+            "Expected list for rates"
+            ) 
+    if len(lines) != len(rates):
+        return SystemResponse.internal_response(
+            ResponseStatus.ERROR, 
+            origin, 
+            "Invalid rates-lines structure"
+            )
+        
+    rates_list = []
+    for key, values in enumerate(rates):
+        line_id = lines[key].id
+        if isinstance(values, list):
+            for value in values:
+                if not isinstance(value, list):
+                    rates_list.append(
+                        Rates(
+                        title=value["title"],
+                        amount=value["amount"],
+                        currency=value["currency"],
+                        line_id=line_id)
+                        )
+                else:
+                    for rate in value:
+                        rates_list.append(
+                    Rates(
+                        title=rate["title"],
+                        amount=rate["amount"],
+                        currency=rate["currency"],
+                        line_id=line_id)
+                        )
+        else:
+            rates_list.append(
+                Rates(
+                title=values["title"],
+                amount=values["amount"],
+                currency=values["currency"],
+                line_id=line_id)
+                )
+    return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, rates_list)
+
+def build_lines(
+    header_id: int,
+    lines: dict
+    ) -> InternalResponse:
+    origin = inspect.stack()[0].function
+    
+    if isinstance(lines, dict):
+        lines_models, line_rates = [], []
+        for _, value in lines.items():
+            if isinstance(value, list):
+                for line in value:
+                    lines_models.append(
+                        EventsLines(
+                            header_id=header_id,
+                            start=line["start"],
+                            end=line["end"],
+                            capacity=line["capacity"],
+                            isPublic=line["isPublic"])
+                    )
+                    line_rates.append(line["rates"])
+            else:
+                lines_models.append(
+                        EventsLines(
+                            header_id=header_id,
+                            start=value["start"],
+                            end=value["end"],
+                            capacity=value["capacity"],
+                            isPublic=value["isPublic"])
+                    )
+                line_rates.append(value["rates"])
+    return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, (lines_models, line_rates))
+
+def approve_header_status(db: Session, 
+    user_id: int, 
+    header_id: int
+    ) -> InternalResponse:
+    
+    origin = inspect.stack()[0].function
+    fetched_header = (
+    db.query(EventsHeaders)
+    .filter(
+        and_(
+            EventsHeaders.owner_id == user_id,
+            EventsHeaders.id == header_id,
+        )
+    )
+    .first()
+    )
+
+    if not fetched_header:
+        return SystemResponse.internal_response(ResponseStatus.ERROR, origin, "Header not found")
+    if fetched_header.status == 3:
+        return SystemResponse.internal_response(ResponseStatus.ERROR, origin, "Post already approved")
+    
+    fetched_header.status = 3
+    result: InternalResponse = commit_db(db, fetched_header)
+    if result.status == ResponseStatus.ERROR:
+        return result
+    return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, result.message)

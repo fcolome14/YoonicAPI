@@ -21,7 +21,7 @@ utc = pytz.UTC
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-def hash_password(pwd: str):
+def hash_password(pwd: str) -> InternalResponse:
     """Generates a hashed password
 
     Args:
@@ -58,7 +58,7 @@ def is_password_valid(plain_password: str, hash_password: str) -> dict:
     return SystemResponse.internal_response(status, origin, message)
 
 
-def is_password_strong(plain_password: str) -> bool:
+def is_password_strong(plain_password: str) -> InternalResponse:
     """Check password strength.
     At least 8 char and 1 number
 
@@ -82,44 +82,6 @@ def is_password_strong(plain_password: str) -> bool:
         message = "No characters in password"
         return SystemResponse.internal_response(status, origin, message)
     return SystemResponse.internal_response(status, origin, "")
-
-
-def is_code_valid(db: Session, code: int, email: str) -> Union[bool, str]:
-    """Check if code has not expired and still exists
-
-    Args:
-        db (Session): _description_
-        code (int): Code to check
-        email (str): Email
-
-    Returns:
-        Union[bool, str]: True if valid, False if not
-    """
-
-    fetched_record = (
-        db.query(models.Users)
-        .filter(and_(models.Users.code == code, models.Users.email == email))
-        .first()
-    )  # noqa: E712
-
-    if not fetched_record or not fetched_record.code_expiration:
-        return {"status": "error", "details": "Code not found"}
-    if fetched_record.code_expiration < datetime.now(timezone.utc):
-        return {"status": "error", "details": "Expired code"}
-
-    return {"status": "success", "details": "Verified code"}
-
-
-def is_code_expired(db: Session, email: str, code: int) -> bool:
-
-    fetched_record = (
-        db.query(models.Users)
-        .filter(and_(models.Users.code == code, models.Users.email == email))
-        .first()
-    )
-    if fetched_record and fetched_record.code_expiration > datetime.now(timezone.utc):
-        return True
-    return False
 
 
 def is_location_address(location: str) -> InternalResponse:

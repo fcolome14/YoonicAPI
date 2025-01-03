@@ -1,4 +1,4 @@
-from .bases import ErrorDetailsHandler, RateDetails, EventLines
+from .bases import ErrorDetailsHandler, RateDetails, EventLines, UpdateChanges
 from .schemas import (CodeValidationInput, DeletePostInput, ErrorDetails,
                       ErrorResponse, MetaData, NewPostHeaderInput,
                       NewPostInput, RecoveryCodeInput, RegisterInput,
@@ -18,6 +18,7 @@ __all__ = [
     "ErrorDetails",
     "ErrorDetailsHandler",
     "MetaData",
+    "UpdateChanges",
     "UpdatePostInput",
     "CodeValidationInput",
     "RecoveryCodeInput",

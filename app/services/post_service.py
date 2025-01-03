@@ -1,7 +1,8 @@
-from enum import IntEnum
+from enum import IntEnum, Enum
+from functools import wraps
 
 from app.responses import SystemResponse, InternalResponse
-from app.schemas.schemas import ResponseStatus
+from app.schemas import ResponseStatus, UpdateChanges
 import inspect
 
 from sqlalchemy.orm import Session
@@ -11,7 +12,12 @@ from typing import List
 
 from datetime import datetime, timezone
 from app.models import Categories, EventsHeaders
-from app.schemas import NewPostHeaderInput, NewPostLinesInput, EventLines, NewPostLinesConfirmInput
+from app.schemas import (
+    NewPostHeaderInput, 
+    NewPostLinesInput, 
+    EventLines, 
+    NewPostLinesConfirmInput, 
+    UpdatePostInput)
 from app.utils import maps_utils, utils, time_utils, fetch_data_utils
 from app.services.common.structures import GenerateStructureService
 from app.services.repeater_service import (select_repeater_single_mode,
@@ -23,6 +29,15 @@ class HeaderStatus(IntEnum):
     STAGING = 1
     REVISION = 2
     APPROVED = 3
+
+class UpdateStatus(Enum):
+    ERROR = "error"
+    SUCCESS = "success"
+
+class SourceTable(Enum):
+    HEADER = "events_headers"
+    LINES = "events_lines"
+    RATES = "rates"
     
 class HeaderPostsService:
 
@@ -165,39 +180,279 @@ class HeaderPostsService:
         db.refresh(header)
         
         return GenerateStructureService.generate_header_structure(header)
-   
-    # @staticmethod
-    # async def update_post_data(
-    #     user_id: int, update_data: UpdatePostInput, db: Session
-    # ) -> dict:
-    #     """Update post data if there are changes
+    
+    @staticmethod
+    async def _update_header(
+        db: Session, 
+        source: str,
+        user_id: int, 
+        table: int, 
+        changes: UpdateChanges = None
+    ) -> InternalResponse:
+        """
+        Update header entry-point
 
-    #     Args:
-    #         user_id (int): Owner of the post
-    #         update_data (schemas.UpdatePostInput): Schema with all new data to be updated
-    #         db (Session): Database connection
+        Args:
+            db (Session): Connection Session
+            user_id (int): User unique id
+            table (int): Db table number (events_header = 0)
+            changes (UpdateChanges, optional): Changes applied to the table. Defaults to None.
 
-    #     Returns:
-    #         dict: Information about failures or successful changes applied
-    #     """
-    #     for item in update_data.tables:
-    #         if item.table == 0:
-    #             update_header = await EventUpdateService._update_header(
-    #                 db, user_id, item.table, item.changes
-    #             )
-    #         elif item.table == 1:
-    #             update_lines = await EventUpdateService._update_lines(
-    #                 db, user_id, item.table, item.changes
-    #             )
-    #         elif item.table == 2:
-    #             update_rates = await EventUpdateService._update_rates(
-    #                 db, user_id, item.table, item.changes
-    #             )
+        Returns:
+            InternalResponse: Internal response
+        """
+        origin = inspect.stack()[0].function
+         
+        if not changes:
+            return SystemResponse.internal_response(
+                ResponseStatus.ERROR,
+                origin, 
+                F"No changes applied to {SourceTable.HEADER.value}")
+            
+        if table != 0:
+            return SystemResponse.internal_response(
+                ResponseStatus.ERROR,
+                origin, 
+                f"Invalid specification table. Expected {SourceTable.HEADER.value}")
 
-    #     return {
-    #         "status": "success",
-    #         "details": (update_header, update_lines, update_rates),
-    #     }
+        header_id, updates = [item.id for item in changes], [item.update for item in changes]
+        result: InternalResponse = fetch_data_utils.get_header(db, user_id, header_id[0])
+        if result.status == ResponseStatus.ERROR:
+            return result
+        
+        header: EventsHeaders = result.message
+        result = await HeaderPostsService._track_header_changes(db, source, updates, header)
+        if result.status == ResponseStatus.ERROR:
+            return result
+        
+        db.commit()
+        
+        tracked_changes = result.message
+        message = f"No changes applied to {SourceTable.HEADER.value}"
+        if len(tracked_changes) > 0:
+            message = tracked_changes
+        return SystemResponse.internal_response(
+            ResponseStatus.SUCCESS, 
+            origin, 
+            message)
+        
+    async def _track_header_changes(
+        db: Session, 
+        source: str,
+        updates: list, 
+        header: EventsHeaders, 
+    ) -> InternalResponse:
+        
+        tracked_changes = []
+        origin = inspect.stack()[0].function
+        
+        for update in updates[0]:
+            field = update.field
+            new_value = update.value
+            old_value = getattr(header, field, None)
+            allowed_fields = ["title", "description", "coordinates", "address", "category", "img", "img2"]
+            
+            if not field in allowed_fields:  # noqa: E713
+                 continue
+
+            if await HeaderPostsService._handle_coordinates_update(
+                tracked_changes, source, header.id, header, field, old_value, new_value
+            ):
+                continue  # Skip if coordinates were updated
+            
+            if await HeaderPostsService._handle_address_update(
+                tracked_changes, source, header.id, header, field, old_value, new_value
+            ):
+                continue  # Skip if address was updated
+            
+            if old_value != new_value:
+                UpdatePost._update_record(
+                    header,
+                    field,
+                    new_value,
+                    tracked_changes,
+                    header.id,
+                    field,
+                    old_value,
+                    SourceTable.HEADER,
+                )
+        return SystemResponse.internal_response(
+            ResponseStatus.SUCCESS, 
+            origin, 
+            tracked_changes)
+                
+    @staticmethod
+    async def _handle_coordinates_update(
+        tracked_changes: list, 
+        source: str,
+        header_id: int, 
+        header: EventsHeaders, 
+        field: str, 
+        old_value: List[float], 
+        new_value: List[float]
+    ) -> bool:
+        
+        if field != "coordinates":
+            return False
+        
+        status = UpdateStatus.ERROR
+        result: InternalResponse = maps_utils.validate_coordinates_format(new_value)
+        point = f"{new_value[0]},{new_value[1]}"
+        old_address = header.address
+        
+        if result.status == ResponseStatus.ERROR:
+            message = "Invalid coordinates type. Expected <[float, float]>"
+            new_value = point
+            UpdatePost._append_tracked_change(
+                    tracked_changes, status,
+                    message, header_id, header.id,
+                    field, old_value, new_value,
+                    source,
+                )
+            return True
+        
+        if point == old_value and result.status == ResponseStatus.SUCCESS:
+            message = "Unchanged location"
+            new_value = point
+            UpdatePost._append_tracked_change(
+                    tracked_changes, status,
+                    message, header_id, header.id,
+                    field, old_value, new_value,
+                    source,
+                )
+            return True
+
+        result = await maps_utils.fetch_reverse_geocode_data(
+            new_value[0], new_value[1]
+        )
+        new_value = point
+        if result.status == ResponseStatus.ERROR:
+            UpdatePost._append_tracked_change(
+                    tracked_changes, status,
+                    result.message, header_id, header.id,
+                    field, old_value, new_value,
+                    source,
+                )
+            return True
+
+        address = result.message["address"]
+        result = HeaderPostsService.update_location(point, address, header)
+        if result.status == ResponseStatus.ERROR:
+            UpdatePost._append_tracked_change(
+                    tracked_changes, status,
+                    result.message, header_id, header.id,
+                    field, old_value, new_value,
+                    source,
+                )
+            return True
+        
+        #If coordinates change, address can too
+        UpdatePost._append_tracked_change(
+                    tracked_changes, UpdateStatus.SUCCESS,
+                    None, header_id, header.id,
+                    field, old_value, new_value,
+                    source,
+                )
+        if old_address != address:
+            UpdatePost._append_tracked_change(
+                        tracked_changes, UpdateStatus.SUCCESS,
+                        None, header_id, header.id,
+                        "address", old_address, address,
+                        source,
+                    )
+        return True
+    
+    @staticmethod
+    async def _handle_address_update(
+        tracked_changes: list, 
+        source: str,
+        header_id: int, 
+        header: EventsHeaders, 
+        field: str, 
+        old_value: List[float], 
+        new_value: List[float]
+    ):
+        status = UpdateStatus.ERROR
+        old_point = header.coordinates
+        
+        if field != "address":
+            return False
+        
+        if not isinstance(new_value, str):
+            message = "Invalid address type. Expected <str>"
+            UpdatePost._append_tracked_change(
+                tracked_changes, UpdateStatus.ERROR,
+                message, header_id, header.id,
+                field, old_value, new_value,
+                source,
+            )
+            return True
+
+        if new_value == old_value:
+            message = "Unchanged location"
+            UpdatePost._append_tracked_change(
+                tracked_changes, UpdateStatus.ERROR,
+                message, header_id, header.id,
+                field, old_value, new_value,
+                source,
+            )
+            return True
+
+        result: InternalResponse = await maps_utils.fetch_geocode_data(new_value)
+        if result.status == ResponseStatus.ERROR:
+            UpdatePost._append_tracked_change(
+                tracked_changes, UpdateStatus.ERROR,
+                result.message, header_id, header.id,
+                field, old_value, new_value,
+                source,
+            )
+            return True
+
+        point, address = result.message["point"], result.message["address"]
+        point = f"{point[0]},{point[1]}"
+        result = HeaderPostsService.update_location(point, address, header)
+        if result.status == ResponseStatus.ERROR:
+            UpdatePost._append_tracked_change(
+                    tracked_changes, status,
+                    result.message, header_id, header.id,
+                    field, old_value, new_value,
+                    source,
+                )
+            return True
+        
+        #If address change, coordinates can too
+        UpdatePost._append_tracked_change(
+                    tracked_changes, UpdateStatus.SUCCESS,
+                    None, header_id, header.id,
+                    field, old_value, new_value,
+                    source,
+                )
+        if old_point != point:
+            UpdatePost._append_tracked_change(
+                        tracked_changes, UpdateStatus.SUCCESS,
+                        None, header_id, header.id,
+                        "coordinates", old_point, point,
+                        source,
+                    )
+        return True
+
+    @staticmethod
+    def update_location(
+        point: str, 
+        address: str, 
+        header: EventsHeaders) -> InternalResponse:
+        
+        origin = inspect.stack()[0].function
+        status = ResponseStatus.SUCCESS
+        
+        setattr(header, "address", address)
+        setattr(header, "coordinates", point)
+        setattr(
+            header,
+            "geom",
+            func.ST_SetSRID(func.ST_Point(point[1], point[0]), 4326),
+        )
+        return SystemResponse.internal_response(status, origin, header)
 
 class LinesPostService:
     
@@ -456,6 +711,7 @@ class LinesPostService:
                 key: pack_repeated(key, value, is_pub, cap)
                 for (key, value), is_pub, cap in zip(generated_lines.items(), self.is_public, self.capacity)
             }
+            
 class PostConfirmation:
     def __init__(self, user_id: int, posting_data: NewPostLinesConfirmInput):
         self.user_id = user_id
@@ -472,6 +728,368 @@ class PostConfirmation:
         if result.status == ResponseStatus.ERROR:
             return result
         return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, result.message)
+
+class UpdatePost:
+    @staticmethod
+    async def update_post_data(
+        db: Session, 
+        user_id: int, 
+        update_data: UpdatePostInput
+        ) -> InternalResponse:
         
+        origin = inspect.stack()[0].function
         
-            
+        for item in update_data.tables:
+            if item.table == 0:
+                source = SourceTable.HEADER
+                update_header: InternalResponse = await HeaderPostsService._update_header(
+                    db, source, user_id, item.table, item.changes
+                )
+                if update_header.status == ResponseStatus.ERROR:
+                    return update_header
+            # elif item.table == 1:
+            #     source = SourceTable.LINES
+            #     update_lines: InternalResponse = await EventUpdateService._update_lines(
+            #         db, source, user_id, item.table, item.changes
+            #     )
+            #     if update_lines.status == ResponseStatus.ERROR:
+            #         return update_lines
+            # elif item.table == 2:
+            #     source = SourceTable.RATES
+            #     update_rates: InternalResponse = await EventUpdateService._update_rates(
+            #         db, source, user_id, item.table, item.changes
+            #     )
+            #     if update_rates.status == ResponseStatus.ERROR:
+            #         return update_rates
+            if item.table > 2:
+                return SystemResponse.internal_response(
+                ResponseStatus.ERROR,
+                origin, 
+                f"Invalid table specified for {SourceTable.HEADER.value}")
+        
+        #update_details = (update_header, update_lines, update_rates)
+        update_header = update_header.message
+        update_details = (update_header)
+        return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, update_details)
+    
+    @staticmethod
+    def _append_tracked_change(
+        tracked_changes: list, status: str,
+        message: str, record_id: int,
+        header_id: int, field: str,
+        old_value: any, new_value: any,
+        origin: str,
+    ):
+        """
+        Helper function to track all update changes
+
+        Args:
+            tracked_changes (list): List to store all history changes
+            status (str): Status of the change (Success/Error)
+            message (str): _description_
+            record_id (int): _description_
+            header_id (int): _description_
+            field (str): _description_
+            old_value (any): _description_
+            new_value (any): _description_
+            origin (str): _description_
+        """
+        tracked_changes.append(
+            {
+                "status": status,
+                "origin": origin,
+                "message": message,
+                "header_id": header_id,
+                "record_id": record_id,
+                "field": field,
+                "old_value": old_value,
+                "new_value": new_value,
+            }
+        )
+    
+    @staticmethod
+    def _update_record(
+        fetched_record,
+        field,
+        new_value,
+        tracked_changes,
+        row_id,
+        field_name,
+        old_value,
+        origin,
+    ):
+        setattr(fetched_record, field, new_value)
+        UpdatePost._append_tracked_change(
+            tracked_changes,
+            UpdateStatus.SUCCESS,
+            None,
+            row_id,
+            fetched_record.id,
+            field_name,
+            old_value,
+            new_value,
+            origin,
+        )
+
+class EventUpdateService:
+
+    @staticmethod
+    async def _update_lines(
+        db: Session, user_id: int, table: int, changes: UpdateChanges = None
+    ):
+        """
+        Update lines rows
+        """
+        if not changes:
+            return {"status": "error", "details": "No changes to apply in lines"}
+
+        if table != 1:
+            return {"status": "error", "details": "Invalid table specified for lines"}
+
+        row_ids = [item.id for item in changes]
+        updates = [
+            {
+                "id": item.id,
+                "updates": [
+                    {"field": update.field, "value": update.value}
+                    for update in item.update
+                ],
+            }
+            for item in changes
+        ]
+
+        fetched_header = (
+            db.query(EventsHeaders)
+            .join(EventsLines, EventsLines.header_id == EventsHeaders.id)
+            .filter(EventsLines.id.in_(row_ids), EventsHeaders.owner_id == user_id)
+            .first()
+        )
+
+        if not fetched_header:
+            return {"status": "error", "details": "Unauthorized user"}
+
+        fetched_records = (
+            db.query(EventsLines)
+            .filter(
+                and_(
+                    EventsLines.header_id == fetched_header.id,
+                    EventsLines.id.in_(row_ids),
+                )
+            )
+            .all()
+        )
+        if not fetched_records:
+            return {"status": "error", "details": "Records not found"}
+
+        tracked_changes = []
+
+        for item in fetched_records:
+            record_update = next((u for u in updates if u["id"] == item.id), None)
+
+            if not record_update:
+                continue
+
+            for update in record_update["updates"]:
+                field = update["field"]
+                new_value = update["value"]
+                old_value = getattr(item, field, None)
+
+                if isinstance(old_value, datetime) and time_utils.is_valid_datetime(
+                    new_value
+                ):
+                    new_value = datetime.strptime(new_value, "%Y-%m-%d %H:%M:%S.%f")
+
+                    if field == "start" and new_value > item.end:
+                        EventUpdateService.append_tracked_change(
+                            tracked_changes,
+                            "error",
+                            f"Starting date must be before {item.end}",
+                            item.id,
+                            fetched_header.id,
+                            field,
+                            old_value,
+                            new_value,
+                            "lines",
+                        )
+                        continue  # Skip item
+
+                    if field == "end" and new_value < item.start:
+                        EventUpdateService.append_tracked_change(
+                            tracked_changes,
+                            "error",
+                            f"Ending date must be after {item.start}",
+                            item.id,
+                            fetched_header.id,
+                            field,
+                            old_value,
+                            new_value,
+                            "lines",
+                        )
+                        continue  # Skip item
+
+                if old_value != new_value:
+                    EventUpdateService.append_tracked_change(
+                        tracked_changes,
+                        "success",
+                        None,
+                        item.id,
+                        fetched_header.id,
+                        field,
+                        old_value,
+                        new_value,
+                        "lines",
+                    )
+                    setattr(item, field, new_value)
+
+        db.commit()
+
+        return (
+            {"status": "success", "details": tracked_changes}
+            if len(tracked_changes) > 0
+            else {"status": "error", "details": "No changes applied in lines"}
+        )
+
+    @staticmethod
+    async def _update_rates(
+        db: Session, user_id: int, table: int, changes: UpdateChanges = None
+    ):
+        """
+        Update rates rows
+        """
+        if not changes:
+            return {"status": "error", "details": "No changes to apply in rates"}
+
+        if table != 2:
+            return {"status": "error", "details": "Invalid table specified for rates"}
+
+        row_ids = [item.id for item in changes]
+        updates = [
+            {
+                "id": item.id,
+                "updates": [
+                    {"field": update.field, "value": update.value}
+                    for update in item.update
+                ],
+            }
+            for item in changes
+        ]
+
+        fetched_ids = (
+            db.query(EventsHeaders.id, EventsLines.id)
+            .join(EventsLines, EventsLines.header_id == EventsHeaders.id)
+            .join(Rates, Rates.line_id == EventsLines.id)
+            .filter(Rates.id.in_(row_ids), EventsHeaders.owner_id == user_id)
+            .all()
+        )
+
+        if not fetched_ids:
+            return {"status": "error", "details": "Unauthorized user for rates"}
+
+        header_ids, lines_id = [item[0] for item in fetched_ids], [
+            item[1] for item in fetched_ids
+        ]
+        header_ids, lines_id = list(set(header_ids)), set(lines_id)
+        header_ids = header_ids[0] if len(header_ids) == 1 else header_ids
+
+        fetched_records = (
+            db.query(Rates)
+            .filter(and_(Rates.line_id.in_(lines_id), Rates.id.in_(row_ids)))
+            .all()
+        )
+        if not fetched_records:
+            return {"status": "error", "details": "Records not found in rates"}
+
+        tracked_changes = []
+
+        for item in fetched_records:
+            record_update = next((u for u in updates if u["id"] == item.id), None)
+
+            if not record_update:
+                continue
+
+            for update in record_update["updates"]:
+                field = update["field"]
+                new_value = update["value"]
+                old_value = getattr(item, field, None)
+
+                if old_value != new_value:
+                    EventUpdateService.append_tracked_change(
+                        tracked_changes,
+                        "success",
+                        None,
+                        item.id,
+                        header_ids,
+                        field,
+                        old_value,
+                        new_value,
+                        "rate",
+                    )
+                    setattr(item, field, new_value)
+
+        db.commit()
+
+        return (
+            {"status": "success", "details": tracked_changes}
+            if len(tracked_changes) > 0
+            else {"status": "error", "details": "No changes applied in rates"}
+        )
+
+    @staticmethod
+    def group_changes_by_event(changes):
+        relevant_changes = []
+        for item in changes.get("details", []):
+            if item.get("status") != "error":
+                for change in item.get("details", []):
+                    header_id = change.get("header_id")
+                    origin = change.get("origin")
+                    field = change.get("field")
+                    old_value = change.get("old_value")
+                    new_value = change.get("new_value")
+                    record_id = change.get("record_id")
+
+                    header_entry = next(
+                        (entry for entry in relevant_changes if header_id in entry),
+                        None,
+                    )
+                    if not header_entry:
+                        header_entry = {header_id: {"header": [], "lines": {}}}
+                        relevant_changes.append(header_entry)
+
+                    header_data = header_entry[header_id]
+
+                    if origin == "header":
+                        header_data["header"].append(
+                            {
+                                "field": field,
+                                "old_value": old_value,
+                                "new_value": new_value,
+                            }
+                        )
+                    elif origin == "lines":
+                        if record_id not in header_data["lines"]:
+                            header_data["lines"][record_id] = {
+                                "fields": [],
+                                "rates": [],
+                            }
+                        header_data["lines"][record_id]["fields"].append(
+                            {
+                                "field": field,
+                                "old_value": old_value,
+                                "new_value": new_value,
+                            }
+                        )
+                    elif origin == "rate":
+                        if record_id not in header_data["lines"]:
+                            header_data["lines"][record_id] = {
+                                "fields": [],
+                                "rates": [],
+                            }
+                        header_data["lines"][record_id]["rates"].append(
+                            {
+                                "rate_id": record_id,
+                                "field": field,
+                                "old_value": old_value,
+                                "new_value": new_value,
+                            }
+                        )
+        return relevant_changes

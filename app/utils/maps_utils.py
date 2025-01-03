@@ -16,6 +16,7 @@ from typing import List
 import pdb
 
 import app.models as models
+from app.models import EventsHeaders
 from app.config import settings
 from app.database.connection import get_db
 from app.utils import time_utils
@@ -98,6 +99,8 @@ async def fetch_reverse_geocode_data(
             fetched_data = response.json()
             if not fetched_data:
                 return SystemResponse.internal_response(status, origin, "Site not found")
+            if isinstance(fetched_data, dict) and "error" in fetched_data:
+                return SystemResponse.internal_response(status, origin, fetched_data["error"])
             lat = fetched_data["lat"]
             lon = fetched_data["lon"]
             address = fetched_data["display_name"]
@@ -109,6 +112,22 @@ async def fetch_reverse_geocode_data(
                 result)
 
         return SystemResponse.internal_response(status, origin, "Error while fetching geocode data")
+
+def validate_coordinates_format(
+    coordinates
+    ) -> InternalResponse:
+    
+    origin = inspect.stack()[0].function
+    status = ResponseStatus.ERROR
+    
+    if not (
+        isinstance(coordinates, list)
+        and len(coordinates) == 2
+        and isinstance(coordinates[0], (float, int))
+        and isinstance(coordinates[1], (float, int))
+    ):
+        return SystemResponse.internal_response(status, origin, "Invalid format")
+    return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, coordinates)
 
 def get_bounding_area(
     point: List[float], 

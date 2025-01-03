@@ -13,7 +13,11 @@ from app.services.event_service import EventDeleteService
 from app.services.retrieve_service import RetrieveService
 from app.responses import SuccessHTTPResponse, ErrorHTTPResponse
 from app.utils import email_utils, fetch_data_utils
-from app.services.post_service import HeaderPostsService, LinesPostService, PostConfirmation
+from app.services.post_service import (
+    HeaderPostsService, 
+    LinesPostService, 
+    PostConfirmation, 
+    UpdatePost)
 
 router = APIRouter(prefix="/posts", tags=["Posts"])
 utc = pytz.UTC
@@ -259,44 +263,42 @@ def delete_event(
     )
 
 
-# @router.put(
-#     "/update-event",
-#     response_model=schemas.SuccessResponse,
-#     status_code=status.HTTP_200_OK,
-# )
-# async def update_event(
-#     updated_data: schemas.UpdatePostInput,
-#     db: Session = Depends(get_db),
-#     request: Request = None,
-#     user_id: int = Depends(get_user_session),
-# ):
+@router.put(
+    "/update-event",
+    response_model=schemas.SuccessResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def update_event(
+    updated_data: schemas.UpdatePostInput,
+    db: Session = Depends(get_db),
+    request: Request = None,
+    user_id: int = Depends(get_user_session),
+):
 
-#     raw_changes = await HeaderPostsService.update_post_data(
-#         user_id=user_id, update_data=updated_data, db=db
-#     )
+    tracked_changes = await UpdatePost.update_post_data(
+    db, user_id, updated_data)
 
-#     if raw_changes.get("status") == "error":
-#         raise HTTPException(
-#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-#             detail=schemas.ErrorDetails(
-#                 type="UpdatePost", message=raw_changes.get("details"), details=None
-#             ).model_dump(),
-#         )
+    if tracked_changes.status == ResponseStatus.ERROR:
+        raise ErrorHTTPResponse.error_response(
+            "UpdateEvent", 
+            status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            tracked_changes.message, None
+        )
 
-#     filtered_changes = HeaderPostsService.group_changes_by_event(raw_changes)
-#     result_email = {}
-#     if len(filtered_changes) > 0:
-#         message = "Sent event update email"
-#         result_email = email_utils.send_updated_events(db, user_id, filtered_changes)
-#     else:
-#         message = "Event unchanged. Email not sent"
+    # filtered_changes = HeaderPostsService.group_changes_by_event(raw_changes)
+    # result_email = {}
+    # if len(filtered_changes) > 0:
+    #     message = "Sent event update email"
+    #     result_email = email_utils.send_updated_events(db, user_id, filtered_changes)
+    # else:
+    #     message = "Event unchanged. Email not sent"
 
-#     return schemas.SuccessResponse(
-#         status="success",
-#         message=message,
-#         data=result_email,
-#         meta={
-#             "request_id": request.headers.get("request-id", "default_request_id"),
-#             "client": request.headers.get("client-type", "unknown"),
-#         },
-#     )
+    return schemas.SuccessResponse(
+        status="success",
+        message="test",
+        data=tracked_changes,
+        meta={
+            "request_id": request.headers.get("request-id", "default_request_id"),
+            "client": request.headers.get("client-type", "unknown"),
+        },
+    )

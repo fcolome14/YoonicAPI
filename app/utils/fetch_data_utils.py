@@ -554,3 +554,27 @@ def build_tags(
             ResponseStatus.SUCCESS, 
             origin, 
             final_result)
+
+def get_header(
+    db: Session, 
+    user_id: int,
+    header_id: int,
+    ) -> InternalResponse:
+    
+    origin = inspect.stack()[0].function
+    
+    header = (
+            db.query(EventsHeaders)
+            .filter(and_(EventsHeaders.owner_id == user_id, 
+                         EventsHeaders.id == header_id))
+            .first()
+        )
+    if not header:
+        return SystemResponse.internal_response(
+            ResponseStatus.ERROR, 
+            origin, 
+            "Not found")
+    return SystemResponse.internal_response(
+            ResponseStatus.SUCCESS, 
+            origin, 
+            header)

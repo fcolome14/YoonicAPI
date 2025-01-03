@@ -3,7 +3,7 @@ from app.schemas.schemas import ResponseStatus
 from app.schemas.schemas import InternalResponse
 import inspect
 from sqlalchemy.orm import Session
-from app.models import Users, EventsHeaders, EventsLines, Rates
+from app.models import Users, EventsHeaders, EventsLines, Rates, Categories, Tags, Subcategories
 from app.services.common.structures import GenerateStructureService
 from sqlalchemy import and_, or_
 from app.utils.time_utils import is_date_expired, compute_expiration_time
@@ -225,7 +225,6 @@ def refresh_code(db: Session,
                                             origin, 
                                             user)
     
-    
 def add_user(db: Session, user: Users):
     origin = inspect.stack()[0].function
     
@@ -240,7 +239,6 @@ def add_user(db: Session, user: Users):
         ResponseStatus.SUCCESS, 
         origin, 
         result.message)
-
 
 def get_code_owner(db: Session, code: int) -> InternalResponse:
     """
@@ -463,3 +461,96 @@ def approve_header_status(db: Session,
     if result.status == ResponseStatus.ERROR:
         return result
     return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, result.message)
+
+def get_categories(
+    db: Session, 
+    ) -> InternalResponse:
+    origin = inspect.stack()[0].function
+    
+    categories = db.query(
+        Categories.id, 
+        Categories.name, 
+        Categories.code
+        ).all()
+    
+    if not categories:
+        return SystemResponse.internal_response(
+            ResponseStatus.ERROR, 
+            origin, 
+            "Not found")
+    
+    response = [
+        {"id": row[0], "category": row[1], "code": row[2]} for row in categories
+    ]
+    return SystemResponse.internal_response(
+            ResponseStatus.SUCCESS, 
+            origin, 
+            response)
+
+def get_tags(
+    db: Session,
+    category_id: int, 
+    ) -> InternalResponse:
+    origin = inspect.stack()[0].function
+    
+    fetched_data = (
+        db.query(
+            Tags.id,
+            Tags.name,
+            Tags.subcat,
+            Subcategories.code,
+            Subcategories.name,
+        )
+        .join(Subcategories, Subcategories.id == Tags.subcat)
+        .join(Categories, Categories.id == Subcategories.cat)
+        .filter(Categories.id == category_id)
+        .all()
+    )
+    
+    if not fetched_data:
+        return SystemResponse.internal_response(
+            ResponseStatus.ERROR, 
+            origin, 
+            "Not found")
+        
+    result = build_tags(fetched_data)
+    if result.status == ResponseStatus.ERROR:
+        return result
+    
+    tags = result.message
+    return SystemResponse.internal_response(
+            ResponseStatus.SUCCESS, 
+            origin, 
+            tags)
+
+def build_tags(
+    tags: list,
+    ) -> InternalResponse:
+    
+    origin = inspect.stack()[0].function
+    result = {}
+    for tag_id, tag_name, subcat_id, subcat_code, subcat_name in tags:
+        subcategory_key = subcat_code
+
+        if subcat_name not in result:
+            result[subcat_name] = []
+
+        subcategory_exists = False
+        for subcategory in result[subcat_name]:
+            if subcategory["subcategory_code"] == subcategory_key:
+                subcategory_exists = True
+                subcategory["tags"].append({"id": tag_id, "name": tag_name})
+                break
+
+        if not subcategory_exists:
+            result[subcat_name].append(
+                {
+                    "subcategory_code": subcategory_key,
+                    "tags": [{"id": tag_id, "name": tag_name}],
+                }
+            )
+    final_result = {category_name: result[category_name] for category_name in result}
+    return SystemResponse.internal_response(
+            ResponseStatus.SUCCESS, 
+            origin, 
+            final_result)

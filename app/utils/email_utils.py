@@ -12,6 +12,7 @@ from app.utils.fetch_data_utils import (validate_email,
                                   get_code_owner)
 
 from app.schemas.schemas import InternalResponse
+from app.templates.template_service import HTMLTemplates
 
 import pdb
 
@@ -109,7 +110,11 @@ def send_auth_code(db: Session, email: str, template: int = 0):
         return response
     return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, verification_code)
 
-def send_updated_events(db: Session, user_id: int, changes: dict):
+def send_updated_events(
+    db: Session, 
+    user_id: int, 
+    changes: list) -> InternalResponse:
+    
     #TODO: REFACTOR JOB
     status = ResponseStatus.ERROR
     origin = inspect.stack()[0].function
@@ -128,20 +133,20 @@ def send_updated_events(db: Session, user_id: int, changes: dict):
     except FileNotFoundError:
         return SystemResponse.internal_response(status, origin, "Updated Event template not found")
 
-    user: Users = result.message
-    name = user.full_name[1].split(" ")
+    email, full_name, _ = result.message
+    name = full_name.split(" ") if len(full_name) > 1 else full_name
     name = name[0] if len(name) > 1 else name
     logo = f"{settings.domain}/static/assets/images/logo_color.png"
     
-    event_details = ""
-    event_details = RetrieveService.generate_event_changes_html(db, changes, user_id)
+    html_body = ""
+    html_body = HTMLTemplates.generate_event_changes_html(db, changes, user_id)
 
     template = Template(template_content)
     html_content = template.substitute(
-        user_name=name, event_details=event_details, logo=logo
+        user_name=name, event_details=html_body, logo=logo
     )
 
-    result: InternalResponse = send_email(user.email, subject, html_content)
+    result: InternalResponse = send_email(email, subject, html_content)
     if result.status == ResponseStatus.ERROR:
         return result
     return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, "Changes sent via email")

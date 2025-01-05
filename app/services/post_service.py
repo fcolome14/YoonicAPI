@@ -11,13 +11,13 @@ from sqlalchemy import and_, func
 from typing import List
 
 from datetime import datetime, timezone
-from app.models import Categories, EventsHeaders
+from app.models import Categories, EventsHeaders, EventsLines, Rates
 from app.schemas import (
     NewPostHeaderInput, 
     NewPostLinesInput, 
     EventLines, 
-    NewPostLinesConfirmInput, 
-    UpdatePostInput)
+    UpdatePostInput,
+    UpdatePostConfirmInput)
 from app.utils import maps_utils, utils, time_utils, fetch_data_utils
 from app.services.common.structures import GenerateStructureService
 from app.services.repeater_service import (select_repeater_single_mode,
@@ -258,23 +258,24 @@ class HeaderPostsService:
             if await HeaderPostsService._handle_coordinates_update(
                 tracked_changes, source, header.id, header, field, old_value, new_value
             ):
-                continue  # Skip if coordinates were updated
+                continue
             
             if await HeaderPostsService._handle_address_update(
                 tracked_changes, source, header.id, header, field, old_value, new_value
             ):
-                continue  # Skip if address was updated
+                continue
             
             if old_value != new_value:
-                UpdatePost._update_record(
-                    header,
-                    field,
-                    new_value,
+                UpdatePost._track_changes(
                     tracked_changes,
+                    UpdateStatus.SUCCESS,
+                    None,
+                    header.id,
                     header.id,
                     field,
                     old_value,
-                    SourceTable.HEADER,
+                    new_value,
+                    source,
                 )
         return SystemResponse.internal_response(
             ResponseStatus.SUCCESS, 
@@ -303,7 +304,7 @@ class HeaderPostsService:
         if result.status == ResponseStatus.ERROR:
             message = "Invalid coordinates type. Expected <[float, float]>"
             new_value = point
-            UpdatePost._append_tracked_change(
+            UpdatePost._track_changes(
                     tracked_changes, status,
                     message, header_id, header.id,
                     field, old_value, new_value,
@@ -314,7 +315,7 @@ class HeaderPostsService:
         if point == old_value and result.status == ResponseStatus.SUCCESS:
             message = "Unchanged location"
             new_value = point
-            UpdatePost._append_tracked_change(
+            UpdatePost._track_changes(
                     tracked_changes, status,
                     message, header_id, header.id,
                     field, old_value, new_value,
@@ -327,7 +328,7 @@ class HeaderPostsService:
         )
         new_value = point
         if result.status == ResponseStatus.ERROR:
-            UpdatePost._append_tracked_change(
+            UpdatePost._track_changes(
                     tracked_changes, status,
                     result.message, header_id, header.id,
                     field, old_value, new_value,
@@ -336,25 +337,16 @@ class HeaderPostsService:
             return True
 
         address = result.message["address"]
-        result = HeaderPostsService.update_location(point, address, header)
-        if result.status == ResponseStatus.ERROR:
-            UpdatePost._append_tracked_change(
-                    tracked_changes, status,
-                    result.message, header_id, header.id,
-                    field, old_value, new_value,
-                    source,
-                )
-            return True
         
         #If coordinates change, address can too
-        UpdatePost._append_tracked_change(
+        UpdatePost._track_changes(
                     tracked_changes, UpdateStatus.SUCCESS,
                     None, header_id, header.id,
                     field, old_value, new_value,
                     source,
                 )
         if old_address != address:
-            UpdatePost._append_tracked_change(
+            UpdatePost._track_changes(
                         tracked_changes, UpdateStatus.SUCCESS,
                         None, header_id, header.id,
                         "address", old_address, address,
@@ -380,7 +372,7 @@ class HeaderPostsService:
         
         if not isinstance(new_value, str):
             message = "Invalid address type. Expected <str>"
-            UpdatePost._append_tracked_change(
+            UpdatePost._track_changes(
                 tracked_changes, UpdateStatus.ERROR,
                 message, header_id, header.id,
                 field, old_value, new_value,
@@ -390,7 +382,7 @@ class HeaderPostsService:
 
         if new_value == old_value:
             message = "Unchanged location"
-            UpdatePost._append_tracked_change(
+            UpdatePost._track_changes(
                 tracked_changes, UpdateStatus.ERROR,
                 message, header_id, header.id,
                 field, old_value, new_value,
@@ -400,7 +392,7 @@ class HeaderPostsService:
 
         result: InternalResponse = await maps_utils.fetch_geocode_data(new_value)
         if result.status == ResponseStatus.ERROR:
-            UpdatePost._append_tracked_change(
+            UpdatePost._track_changes(
                 tracked_changes, UpdateStatus.ERROR,
                 result.message, header_id, header.id,
                 field, old_value, new_value,
@@ -408,27 +400,18 @@ class HeaderPostsService:
             )
             return True
 
-        point, address = result.message["point"], result.message["address"]
+        point, _ = result.message["point"], result.message["address"]
         point = f"{point[0]},{point[1]}"
-        result = HeaderPostsService.update_location(point, address, header)
-        if result.status == ResponseStatus.ERROR:
-            UpdatePost._append_tracked_change(
-                    tracked_changes, status,
-                    result.message, header_id, header.id,
-                    field, old_value, new_value,
-                    source,
-                )
-            return True
         
         #If address change, coordinates can too
-        UpdatePost._append_tracked_change(
+        UpdatePost._track_changes(
                     tracked_changes, UpdateStatus.SUCCESS,
                     None, header_id, header.id,
                     field, old_value, new_value,
                     source,
                 )
         if old_point != point:
-            UpdatePost._append_tracked_change(
+            UpdatePost._track_changes(
                         tracked_changes, UpdateStatus.SUCCESS,
                         None, header_id, header.id,
                         "coordinates", old_point, point,
@@ -711,23 +694,458 @@ class LinesPostService:
                 key: pack_repeated(key, value, is_pub, cap)
                 for (key, value), is_pub, cap in zip(generated_lines.items(), self.is_public, self.capacity)
             }
-            
-class PostConfirmation:
-    def __init__(self, user_id: int, posting_data: NewPostLinesConfirmInput):
-        self.user_id = user_id
-        self.posting_data = posting_data
     
-
-    def add_post(self, db: Session):
+    async def _update_lines(
+        db: Session, 
+        source: str,
+        user_id: int, 
+        table: int, 
+        changes: UpdateChanges = None
+    ) -> InternalResponse:
+        
         origin = inspect.stack()[0].function
-        result: InternalResponse = fetch_data_utils.add_post(
-                                         db, 
-                                         self.user_id, 
-                                         self.posting_data.header_id, 
-                                         self.posting_data.lines)
+        status = ResponseStatus.ERROR
+        
+        if not changes:
+            message = "No changes applied to lines"
+            return SystemResponse.internal_response(
+                status, origin, message)
+
+        if table != 1:
+            message = "Invalid table specified for lines"
+            return SystemResponse.internal_response(
+                status, origin, message)
+
+        lines_ids = [item.id for item in changes]
+        updates = [
+            {
+                "id": item.id,
+                "updates": [
+                    {"field": update.field, "value": update.value}
+                    for update in item.update
+                ],
+            }
+            for item in changes
+        ]
+
+        result: InternalResponse = fetch_data_utils.get_header_from_lines(db, user_id, lines_ids)
         if result.status == ResponseStatus.ERROR:
-            return result
-        return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, result.message)
+            message = "Unauthorized user"
+            return SystemResponse.internal_response(
+                status, origin, message)
+            
+        header: EventsHeaders = result.message
+        result = fetch_data_utils.get_selected_lines_from_same_header(db, header.id, lines_ids)
+        if result.status == ResponseStatus.ERROR:
+            message = "Lines not found"
+            return SystemResponse.internal_response(
+                status, origin, message)
+        
+        lines = result.message
+        tracked_changes = []
+        allowed_lines_fields = ["start", "end", "isPublic", "capacity"]
+
+        for item in lines:
+            
+            record_update = next((u for u in updates if u["id"] == item.id), None)
+            if not record_update:
+                continue
+            
+            new_dates_references = None
+            check_for_fields = {"start", "end"}
+            fields_to_update = {d['field'] for d in record_update["updates"] if 'field' in d}
+            found_both_dates_to_update = check_for_fields.issubset(fields_to_update)
+            
+            if found_both_dates_to_update:
+                new_dates_references = {d['field']: d['value'] for d in record_update["updates"] if d['field'] in check_for_fields}
+                result: InternalResponse = time_utils.convert_string_to_utc(new_dates_references["start"])
+                if result.status == ResponseStatus.ERROR:
+                    continue
+                new_dates_references["start"] = result.message
+                result: InternalResponse = time_utils.convert_string_to_utc(new_dates_references["end"])
+                if result.status == ResponseStatus.ERROR:
+                    continue
+                new_dates_references["end"] = result.message
+
+            for update in record_update["updates"]:
+                field = update["field"]
+                new_value = update["value"]
+                old_value = getattr(item, field, None)
+                
+                if not field in allowed_lines_fields:  # noqa: E713
+                    continue
+
+                if isinstance(old_value, datetime) and time_utils.is_valid_date(new_value):
+                    result: InternalResponse = time_utils.convert_string_to_utc(new_value)
+                    if result.status == ResponseStatus.ERROR:
+                        continue
+                    new_value = result.message
+
+                    if found_both_dates_to_update and new_dates_references:
+                        if field == "start" and new_value > new_dates_references['end']:
+                            message = f"Starting date must be before ending date {new_dates_references['end']}"
+                            UpdatePost._track_changes(
+                                tracked_changes,
+                                UpdateStatus.ERROR,
+                                message,
+                                item.id,
+                                header.id,
+                                field,
+                                old_value,
+                                new_value,
+                                source,
+                            )
+                            continue
+                        if field == "end" and new_value < new_dates_references['start']:
+                            message = f"Ending date must be after starting date {new_dates_references['start']}"
+                            UpdatePost._track_changes(
+                                tracked_changes,
+                                UpdateStatus.ERROR,
+                                message,
+                                item.id,
+                                header.id,
+                                field,
+                                old_value,
+                                new_value,
+                                source,
+                            )
+                            continue
+                    else:
+                        if field == "start" and new_value > item.end:
+                            message = f"Starting date must be before ending date {item.end}"
+                            UpdatePost._track_changes(
+                                tracked_changes,
+                                UpdateStatus.ERROR,
+                                message,
+                                item.id,
+                                header.id,
+                                field,
+                                old_value,
+                                new_value,
+                                source,
+                            )
+                            continue
+                        if field == "end" and new_value < item.start:
+                            message = f"Ending date must be after starting date {item.start}"
+                            UpdatePost._track_changes(
+                                tracked_changes,
+                                UpdateStatus.ERROR,
+                                message,
+                                item.id,
+                                header.id,
+                                field,
+                                old_value,
+                                new_value,
+                                source,
+                            )
+                            continue
+
+                if old_value != new_value:
+                    UpdatePost._track_changes(
+                        tracked_changes,
+                        UpdateStatus.SUCCESS,
+                        None,
+                        item.id,
+                        header.id,
+                        field,
+                        old_value,
+                        new_value,
+                        source,
+                    )
+
+        message = f"No changes applied in {SourceTable.LINES.value}"
+        if len(tracked_changes) > 0:
+            message = tracked_changes
+        return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, message)
+
+class RatesPostService:
+    async def _update_rates(
+        db: Session,
+        source: str, 
+        user_id: int, 
+        table: int, 
+        changes: UpdateChanges = None
+    ) -> InternalResponse:
+        
+        origin = inspect.stack()[0].function
+        
+        if not changes:
+            message = f"No changes to apply in {SourceTable.RATES.value}"
+            return SystemResponse.internal_response(
+                ResponseStatus.SUCCESS, 
+                origin, 
+                message)
+
+        if table != 2:
+            message = f"Invalid table specified for {SourceTable.RATES.value}"
+            return SystemResponse.internal_response(
+                ResponseStatus.SUCCESS, 
+                origin, 
+                message)
+
+        rates_ids = [item.id for item in changes]
+        updates = [
+            {
+                "id": item.id,
+                "updates": [
+                    {"field": update.field, "value": update.value}
+                    for update in item.update
+                ],
+            }
+            for item in changes
+        ]
+
+        result: InternalResponse = fetch_data_utils.get_header_and_lines_from_rates(db, user_id, rates_ids)
+        if result.status == ResponseStatus.ERROR:
+            message = f"Unauthorized user for {SourceTable.RATES.value}"
+            return SystemResponse.internal_response(
+            ResponseStatus.SUCCESS, 
+            origin, 
+            message)
+            
+        header_and_lines_ids: EventsHeaders = result.message
+        header_ids, lines_id = [item[0] for item in header_and_lines_ids], [
+            item[1] for item in header_and_lines_ids
+        ]
+        header_ids, lines_id = list(set(header_ids)), set(lines_id)
+        header_ids = header_ids[0] if len(header_ids) == 1 else header_ids
+
+        
+        result: InternalResponse = fetch_data_utils.get_selected_rates_from_same_lines(db, rates_ids, lines_id)
+        if result.status == ResponseStatus.ERROR:
+            message = f"Records not found in {SourceTable.RATES.value}"
+            return SystemResponse.internal_response(
+            ResponseStatus.SUCCESS, 
+            origin, 
+            message)
+            
+        tracked_changes = []
+        rates = result.message
+        allowed_rates_fields = ["title", "amount", "currency"]
+
+        for item in rates:
+            record_update = next((u for u in updates if u["id"] == item.id), None)
+
+            if not record_update:
+                continue
+
+            for update in record_update["updates"]:
+                field = update["field"]
+                new_value = update["value"]
+                old_value = getattr(item, field, None)
+                
+                if not field in allowed_rates_fields:  # noqa: E713
+                    continue
+
+                if old_value != new_value:
+                    UpdatePost._track_changes(
+                        tracked_changes,
+                        UpdateStatus.SUCCESS,
+                        None,
+                        item.id,
+                        header_ids,
+                        field,
+                        old_value,
+                        new_value,
+                        source,
+                    )
+                    
+        message = f"No changes applied to {SourceTable.RATES.value}"
+        if len(tracked_changes) > 0:
+            message = tracked_changes
+        return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, message)
+                   
+class PostConfirmation:
+    def update_db(
+        db: Session,
+        user_id: int, 
+        updates: List[UpdatePostConfirmInput]) -> InternalResponse:
+        #TODO: REFACTOR
+        
+        origin = inspect.stack()[0].function
+        status = ResponseStatus.ERROR
+        
+        if not isinstance(updates, list) or len(updates) != 3:
+            message = "Invalid input"
+            return SystemResponse.internal_response(status, origin, message)
+        
+        header_updates, lines_updates, rates_updates = [], [], []
+        header_id = -1
+        
+        for index, table in enumerate(updates, start = 0):
+            
+            if index == 0:
+                for item in table:
+                    if item.status != UpdateStatus.SUCCESS.value:
+                        continue
+                    update = (item.source, item.header_id, item.record_id, item.field, item.old_value, item.new_value)
+                    update_dict = PostConfirmation._build_dict_structure(update)
+                    header_updates.append(update_dict)
+            
+            elif index == 1:
+                for item in table:
+                    if item.status != UpdateStatus.SUCCESS.value:
+                        continue
+                    if header_id == -1:
+                        header_id = item.header_id
+                    update = (item.source, item.header_id, item.record_id, item.field, item.old_value, item.new_value)
+                    update_dict = PostConfirmation._build_dict_structure(update)
+                    lines_updates.append(update_dict)
+            
+            elif index == 2:
+                for item in table:
+                    if item.status != UpdateStatus.SUCCESS.value:
+                        continue
+                    update = (item.source, item.header_id, item.record_id, item.field, item.old_value, item.new_value)
+                    update_dict = PostConfirmation._build_dict_structure(update)
+                    rates_updates.append(update_dict)
+            
+            else:
+                continue
+            
+        header_ids, lines_ids, rates_ids = PostConfirmation._get_ids(header_updates,
+                                                                     lines_updates, 
+                                                                     rates_updates)
+        if header_ids:
+            result: InternalResponse = fetch_data_utils.get_header(db, user_id, header_ids)
+            if result.status == ResponseStatus.ERROR:
+                return result
+            header: EventsHeaders = result.message[0]
+            
+            for item in header_updates:
+                if item["field"] == "coordinates" and isinstance(item["new_value"], list):
+                    coord_to_str = f"{item['new_value'][0]},{item['new_value'][1]}"
+                    setattr(header, item["field"], coord_to_str)
+                else:
+                    setattr(header, item["field"], item["new_value"])
+            
+            result = fetch_data_utils.update_db(db, header)
+            if result.status == ResponseStatus.ERROR:
+                return result
+                
+        if lines_ids:
+            result: InternalResponse = fetch_data_utils.get_selected_lines_from_same_header(db, header_id, lines_ids)
+            if result.status == ResponseStatus.ERROR:
+                return result
+            lines: List[EventLines] = result.message
+            
+            for item in lines_updates:
+                for line in lines:
+                    if item["record_id"] == line.id:
+                        setattr(line, item["field"], item["new_value"])
+                        continue
+            for line in lines:
+                result = fetch_data_utils.update_db(db, line)
+                if result.status == ResponseStatus.ERROR:
+                    return result
+        
+        if rates_ids:
+            result: InternalResponse = fetch_data_utils.get_header_and_lines_from_rates(db, user_id, rates_ids)
+            if result.status == ResponseStatus.ERROR:
+                return result
+            lines_ids = [d[1] for d in result.message]
+            result: InternalResponse = fetch_data_utils.get_selected_rates_from_same_lines(db, rates_ids, lines_ids)
+            if result.status == ResponseStatus.ERROR:
+                return result
+            rates: List[Rates] = result.message
+            
+            for item in rates_updates:
+                for rate in rates:
+                    if item["record_id"] == rate.id:
+                        setattr(rate, item["field"], item["new_value"])
+                        continue
+            for rate in rates:
+                result = fetch_data_utils.update_db(db, rate)
+                if result.status == ResponseStatus.ERROR:
+                    return result
+            
+        return SystemResponse.internal_response(
+            ResponseStatus.SUCCESS, 
+            origin, 
+            (header_updates, lines_updates, rates_updates))
+    
+    def _build_dict_structure(updates: list) -> dict:
+        return {
+            "source": updates[0],
+            "header_id": updates[1], 
+            "record_id": updates[2], 
+            "field": updates[3],
+            "old_value": updates[4],
+            "new_value": updates[5]
+            }
+    
+    def _get_ids(
+        header_updates: list, 
+        lines_updates: list, 
+        rates_updates: list) -> tuple:
+        
+        header_ids, lines_ids, rates_ids = [], [], []
+        
+        header_ids.extend(item["record_id"] for item in header_updates if item["record_id"] not in header_ids)
+        lines_ids.extend(item["record_id"] for item in lines_updates if item["record_id"] not in lines_ids)
+        rates_ids.extend(item["record_id"] for item in rates_updates if item["record_id"] not in rates_ids)
+        
+        return (header_ids, lines_ids, rates_ids)
+    
+    @staticmethod
+    def build_post_updates_structure(tables: list) -> InternalResponse:
+        origin = inspect.stack()[0].function
+        
+        relevant_changes = []
+
+        for table in tables:
+            for change in table:
+                header_id = change["header_id"]
+                record_id = change["record_id"]
+                source = change["source"]
+                field = change["field"]
+                old_value = change["old_value"]
+                new_value = change["new_value"]
+                
+                header_entry = next(
+                    (entry for entry in relevant_changes if header_id in entry), None
+                )
+                if not header_entry:
+                    header_entry = {header_id: {SourceTable.HEADER.value: [], SourceTable.LINES.value: {}}}
+                    relevant_changes.append(header_entry)
+
+                header_data = header_entry[header_id]
+
+                if source == SourceTable.HEADER.value:
+                    header_data[SourceTable.HEADER.value].append(
+                        {
+                            "field": field,
+                            "old_value": old_value,
+                            "new_value": new_value,
+                        }
+                    )
+                elif source == SourceTable.LINES.value:
+                    if record_id not in header_data[SourceTable.LINES.value]:
+                        header_data[SourceTable.LINES.value][record_id] = {"fields": [], SourceTable.RATES.value: []}
+                    header_data[SourceTable.LINES.value][record_id]["fields"].append(
+                        {
+                            "field": field,
+                            "old_value": old_value,
+                            "new_value": new_value,
+                        }
+                    )
+                elif source == SourceTable.RATES.value:
+                    if record_id not in header_data[SourceTable.LINES.value]:
+                        header_data[SourceTable.LINES.value][record_id] = {"fields": [], SourceTable.RATES.value: []}
+                    header_data[SourceTable.LINES.value][record_id][SourceTable.RATES.value].append(
+                        {
+                            "rate_id": record_id,
+                            "field": field,
+                            "old_value": old_value,
+                            "new_value": new_value,
+                        }
+                    )
+                    
+        return SystemResponse.internal_response(
+                ResponseStatus.SUCCESS, 
+                origin, 
+                relevant_changes)
+
 
 class UpdatePost:
     @staticmethod
@@ -738,47 +1156,53 @@ class UpdatePost:
         ) -> InternalResponse:
         
         origin = inspect.stack()[0].function
+        update_header, update_lines, update_rates = [], [], []
         
         for item in update_data.tables:
+            
             if item.table == 0:
                 source = SourceTable.HEADER
-                update_header: InternalResponse = await HeaderPostsService._update_header(
+                header_result: InternalResponse = await HeaderPostsService._update_header(
                     db, source, user_id, item.table, item.changes
                 )
-                if update_header.status == ResponseStatus.ERROR:
-                    return update_header
-            # elif item.table == 1:
-            #     source = SourceTable.LINES
-            #     update_lines: InternalResponse = await EventUpdateService._update_lines(
-            #         db, source, user_id, item.table, item.changes
-            #     )
-            #     if update_lines.status == ResponseStatus.ERROR:
-            #         return update_lines
-            # elif item.table == 2:
-            #     source = SourceTable.RATES
-            #     update_rates: InternalResponse = await EventUpdateService._update_rates(
-            #         db, source, user_id, item.table, item.changes
-            #     )
-            #     if update_rates.status == ResponseStatus.ERROR:
-            #         return update_rates
+                if header_result.status == ResponseStatus.ERROR:
+                    return header_result
+                update_header = header_result.message
+                
+            elif item.table == 1:
+                source = SourceTable.LINES
+                lines_result: InternalResponse = await LinesPostService._update_lines(
+                    db, source, user_id, item.table, item.changes
+                )
+                if lines_result.status == ResponseStatus.ERROR:
+                    return lines_result
+                update_lines = lines_result.message
+                
+            elif item.table == 2:
+                source = SourceTable.RATES
+                result_rates: InternalResponse = await RatesPostService._update_rates(
+                    db, source, user_id, item.table, item.changes
+                )
+                if result_rates.status == ResponseStatus.ERROR:
+                    return result_rates
+                update_rates = result_rates.message
+            
             if item.table > 2:
                 return SystemResponse.internal_response(
                 ResponseStatus.ERROR,
                 origin, 
-                f"Invalid table specified for {SourceTable.HEADER.value}")
-        
-        #update_details = (update_header, update_lines, update_rates)
-        update_header = update_header.message
-        update_details = (update_header)
+                "Invalid specified source table")
+
+        update_details = (update_header, update_lines, update_rates)
         return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, update_details)
     
     @staticmethod
-    def _append_tracked_change(
+    def _track_changes(
         tracked_changes: list, status: str,
         message: str, record_id: int,
         header_id: int, field: str,
         old_value: any, new_value: any,
-        origin: str,
+        source: str,
     ):
         """
         Helper function to track all update changes
@@ -792,12 +1216,12 @@ class UpdatePost:
             field (str): _description_
             old_value (any): _description_
             new_value (any): _description_
-            origin (str): _description_
+            source (str): _description_
         """
         tracked_changes.append(
             {
                 "status": status,
-                "origin": origin,
+                "source": source,
                 "message": message,
                 "header_id": header_id,
                 "record_id": record_id,
@@ -806,290 +1230,3 @@ class UpdatePost:
                 "new_value": new_value,
             }
         )
-    
-    @staticmethod
-    def _update_record(
-        fetched_record,
-        field,
-        new_value,
-        tracked_changes,
-        row_id,
-        field_name,
-        old_value,
-        origin,
-    ):
-        setattr(fetched_record, field, new_value)
-        UpdatePost._append_tracked_change(
-            tracked_changes,
-            UpdateStatus.SUCCESS,
-            None,
-            row_id,
-            fetched_record.id,
-            field_name,
-            old_value,
-            new_value,
-            origin,
-        )
-
-class EventUpdateService:
-
-    @staticmethod
-    async def _update_lines(
-        db: Session, user_id: int, table: int, changes: UpdateChanges = None
-    ):
-        """
-        Update lines rows
-        """
-        if not changes:
-            return {"status": "error", "details": "No changes to apply in lines"}
-
-        if table != 1:
-            return {"status": "error", "details": "Invalid table specified for lines"}
-
-        row_ids = [item.id for item in changes]
-        updates = [
-            {
-                "id": item.id,
-                "updates": [
-                    {"field": update.field, "value": update.value}
-                    for update in item.update
-                ],
-            }
-            for item in changes
-        ]
-
-        fetched_header = (
-            db.query(EventsHeaders)
-            .join(EventsLines, EventsLines.header_id == EventsHeaders.id)
-            .filter(EventsLines.id.in_(row_ids), EventsHeaders.owner_id == user_id)
-            .first()
-        )
-
-        if not fetched_header:
-            return {"status": "error", "details": "Unauthorized user"}
-
-        fetched_records = (
-            db.query(EventsLines)
-            .filter(
-                and_(
-                    EventsLines.header_id == fetched_header.id,
-                    EventsLines.id.in_(row_ids),
-                )
-            )
-            .all()
-        )
-        if not fetched_records:
-            return {"status": "error", "details": "Records not found"}
-
-        tracked_changes = []
-
-        for item in fetched_records:
-            record_update = next((u for u in updates if u["id"] == item.id), None)
-
-            if not record_update:
-                continue
-
-            for update in record_update["updates"]:
-                field = update["field"]
-                new_value = update["value"]
-                old_value = getattr(item, field, None)
-
-                if isinstance(old_value, datetime) and time_utils.is_valid_datetime(
-                    new_value
-                ):
-                    new_value = datetime.strptime(new_value, "%Y-%m-%d %H:%M:%S.%f")
-
-                    if field == "start" and new_value > item.end:
-                        EventUpdateService.append_tracked_change(
-                            tracked_changes,
-                            "error",
-                            f"Starting date must be before {item.end}",
-                            item.id,
-                            fetched_header.id,
-                            field,
-                            old_value,
-                            new_value,
-                            "lines",
-                        )
-                        continue  # Skip item
-
-                    if field == "end" and new_value < item.start:
-                        EventUpdateService.append_tracked_change(
-                            tracked_changes,
-                            "error",
-                            f"Ending date must be after {item.start}",
-                            item.id,
-                            fetched_header.id,
-                            field,
-                            old_value,
-                            new_value,
-                            "lines",
-                        )
-                        continue  # Skip item
-
-                if old_value != new_value:
-                    EventUpdateService.append_tracked_change(
-                        tracked_changes,
-                        "success",
-                        None,
-                        item.id,
-                        fetched_header.id,
-                        field,
-                        old_value,
-                        new_value,
-                        "lines",
-                    )
-                    setattr(item, field, new_value)
-
-        db.commit()
-
-        return (
-            {"status": "success", "details": tracked_changes}
-            if len(tracked_changes) > 0
-            else {"status": "error", "details": "No changes applied in lines"}
-        )
-
-    @staticmethod
-    async def _update_rates(
-        db: Session, user_id: int, table: int, changes: UpdateChanges = None
-    ):
-        """
-        Update rates rows
-        """
-        if not changes:
-            return {"status": "error", "details": "No changes to apply in rates"}
-
-        if table != 2:
-            return {"status": "error", "details": "Invalid table specified for rates"}
-
-        row_ids = [item.id for item in changes]
-        updates = [
-            {
-                "id": item.id,
-                "updates": [
-                    {"field": update.field, "value": update.value}
-                    for update in item.update
-                ],
-            }
-            for item in changes
-        ]
-
-        fetched_ids = (
-            db.query(EventsHeaders.id, EventsLines.id)
-            .join(EventsLines, EventsLines.header_id == EventsHeaders.id)
-            .join(Rates, Rates.line_id == EventsLines.id)
-            .filter(Rates.id.in_(row_ids), EventsHeaders.owner_id == user_id)
-            .all()
-        )
-
-        if not fetched_ids:
-            return {"status": "error", "details": "Unauthorized user for rates"}
-
-        header_ids, lines_id = [item[0] for item in fetched_ids], [
-            item[1] for item in fetched_ids
-        ]
-        header_ids, lines_id = list(set(header_ids)), set(lines_id)
-        header_ids = header_ids[0] if len(header_ids) == 1 else header_ids
-
-        fetched_records = (
-            db.query(Rates)
-            .filter(and_(Rates.line_id.in_(lines_id), Rates.id.in_(row_ids)))
-            .all()
-        )
-        if not fetched_records:
-            return {"status": "error", "details": "Records not found in rates"}
-
-        tracked_changes = []
-
-        for item in fetched_records:
-            record_update = next((u for u in updates if u["id"] == item.id), None)
-
-            if not record_update:
-                continue
-
-            for update in record_update["updates"]:
-                field = update["field"]
-                new_value = update["value"]
-                old_value = getattr(item, field, None)
-
-                if old_value != new_value:
-                    EventUpdateService.append_tracked_change(
-                        tracked_changes,
-                        "success",
-                        None,
-                        item.id,
-                        header_ids,
-                        field,
-                        old_value,
-                        new_value,
-                        "rate",
-                    )
-                    setattr(item, field, new_value)
-
-        db.commit()
-
-        return (
-            {"status": "success", "details": tracked_changes}
-            if len(tracked_changes) > 0
-            else {"status": "error", "details": "No changes applied in rates"}
-        )
-
-    @staticmethod
-    def group_changes_by_event(changes):
-        relevant_changes = []
-        for item in changes.get("details", []):
-            if item.get("status") != "error":
-                for change in item.get("details", []):
-                    header_id = change.get("header_id")
-                    origin = change.get("origin")
-                    field = change.get("field")
-                    old_value = change.get("old_value")
-                    new_value = change.get("new_value")
-                    record_id = change.get("record_id")
-
-                    header_entry = next(
-                        (entry for entry in relevant_changes if header_id in entry),
-                        None,
-                    )
-                    if not header_entry:
-                        header_entry = {header_id: {"header": [], "lines": {}}}
-                        relevant_changes.append(header_entry)
-
-                    header_data = header_entry[header_id]
-
-                    if origin == "header":
-                        header_data["header"].append(
-                            {
-                                "field": field,
-                                "old_value": old_value,
-                                "new_value": new_value,
-                            }
-                        )
-                    elif origin == "lines":
-                        if record_id not in header_data["lines"]:
-                            header_data["lines"][record_id] = {
-                                "fields": [],
-                                "rates": [],
-                            }
-                        header_data["lines"][record_id]["fields"].append(
-                            {
-                                "field": field,
-                                "old_value": old_value,
-                                "new_value": new_value,
-                            }
-                        )
-                    elif origin == "rate":
-                        if record_id not in header_data["lines"]:
-                            header_data["lines"][record_id] = {
-                                "fields": [],
-                                "rates": [],
-                            }
-                        header_data["lines"][record_id]["rates"].append(
-                            {
-                                "rate_id": record_id,
-                                "field": field,
-                                "old_value": old_value,
-                                "new_value": new_value,
-                            }
-                        )
-        return relevant_changes

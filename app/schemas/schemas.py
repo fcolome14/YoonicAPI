@@ -4,7 +4,13 @@ from typing import Any, List, Optional, Tuple, Union
 
 from pydantic import BaseModel, EmailStr, Field
 
-from .bases import Deletes, ErrorDetails, EventLines, MetaData, TableChanges
+from .bases import (
+    Deletes, 
+    ErrorDetails, 
+    EventLines, 
+    MetaData, 
+    TableChanges, 
+    UpdateConfirmChanges)
 
 
 # RESPONSES
@@ -133,10 +139,14 @@ class NewPostInput(BaseModel):
 
 
 class UpdatePostInput(BaseModel):
-    """Update post"""
+    """ Update post """
 
     tables: List[TableChanges]
 
+class UpdatePostConfirmInput(BaseModel):
+    """ Update post confirmation """
+    
+    data: Union[List[List[UpdateConfirmChanges]], None] = None
 
 class DeletePostInput(BaseModel):
     """Delete post"""

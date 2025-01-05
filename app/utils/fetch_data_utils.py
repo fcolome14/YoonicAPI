@@ -2,6 +2,7 @@ from app.responses import SystemResponse
 from app.schemas.schemas import ResponseStatus
 from app.schemas.schemas import InternalResponse
 import inspect
+from typing import Union, List
 from sqlalchemy.orm import Session
 from app.models import Users, EventsHeaders, EventsLines, Rates, Categories, Tags, Subcategories
 from app.services.common.structures import GenerateStructureService
@@ -558,17 +559,30 @@ def build_tags(
 def get_header(
     db: Session, 
     user_id: int,
-    header_id: int,
+    header_id: Union[int, List[int]],
     ) -> InternalResponse:
     
     origin = inspect.stack()[0].function
     
-    header = (
-            db.query(EventsHeaders)
-            .filter(and_(EventsHeaders.owner_id == user_id, 
-                         EventsHeaders.id == header_id))
-            .first()
-        )
+    if isinstance(header_id, int):
+        header = (
+                db.query(EventsHeaders)
+                .filter(and_(EventsHeaders.owner_id == user_id, 
+                            EventsHeaders.id == header_id))
+                .first()
+            )
+    elif isinstance(header_id, list) and all(isinstance(d, int) for d in header_id):
+        header = (
+                db.query(EventsHeaders)
+                .filter(and_(EventsHeaders.owner_id == user_id, 
+                            EventsHeaders.id.in_(header_id)))
+                .all()
+            )
+    else:
+        return SystemResponse.internal_response(
+            ResponseStatus.ERROR, 
+            origin, 
+            "Invalid type")
     if not header:
         return SystemResponse.internal_response(
             ResponseStatus.ERROR, 
@@ -578,3 +592,107 @@ def get_header(
             ResponseStatus.SUCCESS, 
             origin, 
             header)
+
+def get_header_from_lines(
+    db: Session, 
+    user_id: int,
+    lines_ids: list,
+    ) -> InternalResponse:
+    
+    origin = inspect.stack()[0].function
+    
+    header = (
+            db.query(EventsHeaders)
+            .join(EventsLines, EventsLines.header_id == EventsHeaders.id)
+            .filter(EventsLines.id.in_(lines_ids), EventsHeaders.owner_id == user_id)
+            .first()
+        )
+    
+    if not header:
+        return SystemResponse.internal_response(
+            ResponseStatus.ERROR, 
+            origin, 
+            "Not found")
+    return SystemResponse.internal_response(
+            ResponseStatus.SUCCESS, 
+            origin, 
+            header)
+
+def get_selected_rates_from_same_lines(
+    db: Session, 
+    rates_ids: int,
+    lines_ids: list,
+    ) -> InternalResponse:
+    
+    origin = inspect.stack()[0].function
+    
+    rates = (
+            db.query(Rates)
+            .filter(and_(Rates.line_id.in_(lines_ids), Rates.id.in_(rates_ids)))
+            .all()
+        )
+    
+    if not rates:
+        return SystemResponse.internal_response(
+            ResponseStatus.ERROR, 
+            origin, 
+            "Not found")
+    return SystemResponse.internal_response(
+            ResponseStatus.SUCCESS, 
+            origin, 
+            rates)
+
+def get_header_and_lines_from_rates(
+    db: Session, 
+    user_id: int,
+    rates_ids: list,
+    ) -> InternalResponse:
+    
+    origin = inspect.stack()[0].function
+    
+    header_and_lines_ids = (
+            db.query(EventsHeaders.id, EventsLines.id)
+            .join(EventsLines, EventsLines.header_id == EventsHeaders.id)
+            .join(Rates, Rates.line_id == EventsLines.id)
+            .filter(Rates.id.in_(rates_ids), EventsHeaders.owner_id == user_id)
+            .all()
+        )
+    
+    if not header_and_lines_ids:
+        return SystemResponse.internal_response(
+            ResponseStatus.ERROR, 
+            origin, 
+            "Not found")
+    return SystemResponse.internal_response(
+            ResponseStatus.SUCCESS, 
+            origin, 
+            header_and_lines_ids)
+
+def get_selected_lines_from_same_header(
+    db: Session, 
+    header_id: int,
+    lines_ids: list,
+    ) -> InternalResponse:
+    
+    origin = inspect.stack()[0].function
+    
+    lines = (
+            db.query(EventsLines)
+            .filter(
+                and_(
+                    EventsLines.header_id == header_id,
+                    EventsLines.id.in_(lines_ids),
+                )
+            )
+            .all()
+        )
+    
+    if not lines:
+        return SystemResponse.internal_response(
+            ResponseStatus.ERROR, 
+            origin, 
+            "Not found")
+    return SystemResponse.internal_response(
+            ResponseStatus.SUCCESS, 
+            origin, 
+            lines)

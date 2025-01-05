@@ -12,6 +12,7 @@ from app.schemas import schemas
 from app.services.event_service import EventDeleteService
 from app.services.retrieve_service import RetrieveService
 from app.responses import SuccessHTTPResponse, ErrorHTTPResponse
+from app.templates.template_service import HTMLTemplates
 from app.utils import email_utils, fetch_data_utils
 from app.services.post_service import (
     HeaderPostsService, 
@@ -284,21 +285,47 @@ async def update_event(
             status.HTTP_500_INTERNAL_SERVER_ERROR, 
             tracked_changes.message, None
         )
+    tracked_changes = tracked_changes.message
+    return SuccessHTTPResponse.success_response("PostUpdate", tracked_changes, request)
 
-    # filtered_changes = HeaderPostsService.group_changes_by_event(raw_changes)
-    # result_email = {}
-    # if len(filtered_changes) > 0:
-    #     message = "Sent event update email"
-    #     result_email = email_utils.send_updated_events(db, user_id, filtered_changes)
-    # else:
-    #     message = "Event unchanged. Email not sent"
-
-    return schemas.SuccessResponse(
-        status="success",
-        message="test",
-        data=tracked_changes,
-        meta={
-            "request_id": request.headers.get("request-id", "default_request_id"),
-            "client": request.headers.get("client-type", "unknown"),
-        },
-    )
+@router.put(
+    "/confirm-update",
+    status_code=status.HTTP_200_OK,
+    response_model=schemas.SuccessResponse,
+)
+def confirm_update(
+    confirmed_data: schemas.UpdatePostConfirmInput,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_user_session),
+    request: Request = None,
+    ):
+    
+    if not confirmed_data.data:
+        message = "No changes applied"
+        return SuccessHTTPResponse.success_response("ConfirmUpdate", message, request)
+    
+    result: InternalResponse = PostConfirmation.update_db(db, user_id, confirmed_data.data)
+    if result.status == ResponseStatus.ERROR:
+        raise ErrorHTTPResponse.error_response(
+            "ConfirmUpdate", 
+            status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            result.message, None
+        )
+    updated_changes = result.message
+    result = PostConfirmation.build_post_updates_structure(updated_changes)
+    if result.status == ResponseStatus.ERROR:
+        raise ErrorHTTPResponse.error_response(
+            "ConfirmUpdate", 
+            status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            result.message, None
+        )
+    updated_changes = result.message
+    result = email_utils.send_updated_events(db, user_id, updated_changes)
+    if result.status == ResponseStatus.ERROR:
+        raise ErrorHTTPResponse.error_response(
+            "ConfirmUpdate", 
+            status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            result.message, None
+        )
+    
+    return SuccessHTTPResponse.success_response("ConfirmUpdate", result.message, request)

@@ -3,7 +3,8 @@ from .schemas import (CodeValidationInput, DeletePostInput, ErrorDetails,
                       ErrorResponse, MetaData, NewPostHeaderInput,
                       NewPostInput, RecoveryCodeInput, RegisterInput,
                       SuccessResponse, UpdatePostInput, InternalResponse, 
-                      ResponseStatus, NewPostLinesInput, NewPostLinesConfirmInput)
+                      ResponseStatus, NewPostLinesInput, NewPostLinesConfirmInput, 
+                      UpdatePostConfirmInput)
 from .token import TokenData, TokenSchema
 
 __all__ = [
@@ -27,5 +28,6 @@ __all__ = [
     "NewPostLinesInput",
     "NewPostHeaderInput",
     "NewPostLinesConfirmInput",
+    "UpdatePostConfirmInput",
     "NewPostInput",
 ]

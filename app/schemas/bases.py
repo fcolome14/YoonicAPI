@@ -64,10 +64,22 @@ class UpdateChanges(BaseModel):
     id: int
     update: Optional[List[UpdateDetails]] = None
 
+class UpdateConfirmChanges(BaseModel):
+
+    status: str
+    source: str
+    message: Union[str, None]
+    header_id: int
+    record_id: int
+    field: str
+    old_value: Any
+    new_value: Any
+
 class Deletes(BaseModel):
 
     id: int
 
 class TableChanges(BaseModel):
+    
     table: int
     changes: List[UpdateChanges]

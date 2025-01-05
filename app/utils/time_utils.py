@@ -103,6 +103,37 @@ def convert_naive_to_utc(
         return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, datetime_obj)
     return SystemResponse.internal_response(ResponseStatus.ERROR, origin, "Time aware. TZ information provided")
 
+def convert_string_to_utc(
+    date_str: str,
+    format: str = "%Y-%m-%d %H:%M:%S.%f") -> InternalResponse:
+    """
+    Convert a date (string) to UTC datetime
+
+    Args:
+        date (str): Date
+        format (str, optional): Desired format. Defaults to "%Y-%m-%d %H:%M:%S.%f".
+
+    Returns:
+        InternalResponse: Internal response
+    """
+    
+    origin = inspect.stack()[0].function
+    
+    try:
+        date_dt = datetime.strptime(date_str, format)
+        date_dt.astimezone(ZoneInfo('UTC'))
+    except ValueError as exc:
+        return SystemResponse.internal_response(
+            ResponseStatus.ERROR, 
+            origin, 
+            f"Raised error: {exc}")
+    except Exception as exc:
+        return SystemResponse.internal_response(
+            ResponseStatus.ERROR, 
+            origin, 
+            f"Raised exception: {exc}")
+    return SystemResponse.internal_response(ResponseStatus.SUCCESS, origin, date_dt)
+
 def repeat_daily(
     start: datetime, 
     end: datetime, 

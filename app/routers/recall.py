@@ -1,17 +1,23 @@
 import pytz
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
+from enum import Enum
 
 import app.models as models
 from app.database.connection import get_db
 from app.oauth2 import get_user_session
 from app.rate_limit import limiter
 from app.schemas import schemas
-from app.utils import maps_utils
+from app.utils import maps_utils, fetch_data_utils
+
+from app.schemas.schemas import ResponseStatus, InternalResponse, SuccessResponse
+from app.responses import SuccessHTTPResponse, ErrorHTTPResponse
 
 router = APIRouter(prefix="/recall", tags=["Configuration recall"])
 utc = pytz.UTC
-
+class UsersTypes(Enum):
+    CAT = "Categories Settings"
+    TAGS = "Tags Settings"
 
 @router.get(
     "/categories",
@@ -23,38 +29,20 @@ def get_categories(
     _: int = Depends(get_user_session),
     request: Request = None,
 ) -> schemas.SuccessResponse:
-    """Get categories mapping
-
-    Args:
-        db (Session, optional): Database session. Defaults to Depends(get_db).
-        _ (int, optional): User id. Defaults to Depends(get_user_session).
-        request (Request, optional): Header request. Defaults to None.
-
-    Returns:
-        schemas.SuccessResponse: Response JSON
-    """
-    response = db.query(
-        models.Categories.id, models.Categories.name, models.Categories.code
-    ).all()
-    if not response:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=schemas.ErrorDetails(
-                type="GetCategories", message="Not Found", details=None
-            ).model_dump(),
-        )
-
-    response_dict = [
-        {"id": row[0], "category": row[1], "code": row[2]} for row in response
-    ]
-    return schemas.SuccessResponse(
-        message="Categories settings",
-        data=response_dict,
-        meta={
-            "request_id": request.headers.get("request-id", "default_request_id"),
-            "client": request.headers.get("client-type", "unknown"),
-        },
-    )
+    
+    result: InternalResponse = fetch_data_utils.get_categories(db)
+    if result.status == ResponseStatus.ERROR:
+        raise ErrorHTTPResponse.error_response(
+            UsersTypes.CAT, 
+            status.HTTP_404_NOT_FOUND,
+            message=result.message,
+            details="User not found")
+    
+    categories = result.message
+    return SuccessHTTPResponse.success_response(
+        UsersTypes.CAT, 
+        categories, 
+        request)
 
 
 @router.get(
@@ -66,72 +54,19 @@ def get_tags(
     _: int = Depends(get_user_session),
     request: Request = None,
 ) -> schemas.SuccessResponse:
-    """Get tags related to a category
 
-    Args:
-        category_id (int): _description_
-        db (Session, optional): _description_. Defaults to Depends(get_db).
-        _ (int, optional): _description_. Defaults to Depends(get_user_session).
-        request (Request, optional): _description_. Defaults to None.
-
-    Returns:
-        schemas.SuccessResponse: _description_
-    """
-
-    response = (
-        db.query(
-            models.Tags.id,
-            models.Tags.name,
-            models.Tags.subcat,
-            models.Subcategories.code,
-            models.Subcategories.name,
-        )
-        .join(models.Subcategories, models.Subcategories.id == models.Tags.subcat)
-        .join(models.Categories, models.Categories.id == models.Subcategories.cat)
-        .filter(models.Categories.id == category_id)
-        .all()
-    )
-
-    if not response:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=schemas.ErrorDetails(
-                type="GetTags", message="Not Found", details=None
-            ).model_dump(),
-        )
-
-    result = {}
-    for tag_id, tag_name, subcat_id, subcat_code, subcat_name in response:
-        subcategory_key = subcat_code
-
-        if subcat_name not in result:
-            result[subcat_name] = []
-
-        subcategory_exists = False
-        for subcategory in result[subcat_name]:
-            if subcategory["subcategory_code"] == subcategory_key:
-                subcategory_exists = True
-                subcategory["tags"].append({"id": tag_id, "name": tag_name})
-                break
-
-        if not subcategory_exists:
-            result[subcat_name].append(
-                {
-                    "subcategory_code": subcategory_key,
-                    "tags": [{"id": tag_id, "name": tag_name}],
-                }
-            )
-
-    final_result = {category_name: result[category_name] for category_name in result}
-
-    return schemas.SuccessResponse(
-        message="Tags",
-        data=final_result,
-        meta={
-            "request_id": request.headers.get("request-id", "default_request_id"),
-            "client": request.headers.get("client-type", "unknown"),
-        },
-    )
+    result: InternalResponse = fetch_data_utils.get_tags(db, category_id)
+    if result.status == ResponseStatus.ERROR:
+        raise ErrorHTTPResponse.error_response(
+            UsersTypes.TAGS, 
+            status.HTTP_404_NOT_FOUND,
+            message=result.message,
+            details=None)
+        
+    return SuccessHTTPResponse.success_response(
+        UsersTypes.TAGS, 
+        result.message, 
+        request)
 
 
 @router.get(

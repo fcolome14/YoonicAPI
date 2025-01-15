@@ -28,7 +28,6 @@ class MetaData(BaseModel):
     request_id: Optional[str] = None
     client: Optional[str] = None
 
-
 class ErrorDetails(BaseModel):
 
     type: str
@@ -70,6 +69,16 @@ class UpdateChanges(BaseModel):
     id: int
     update: Optional[List[UpdateDetails]] = None
 
+class UpdateConfirmChanges(BaseModel):
+
+    status: str
+    source: str
+    message: Union[str, None]
+    header_id: int
+    record_id: int
+    field: str
+    old_value: Any
+    new_value: Any
 
 class Deletes(BaseModel):
 
@@ -77,5 +86,6 @@ class Deletes(BaseModel):
 
 
 class TableChanges(BaseModel):
+    
     table: int
     changes: List[UpdateChanges]

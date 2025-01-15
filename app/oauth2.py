@@ -7,9 +7,12 @@ from jose import JWTError, jwt
 from jwt import DecodeError, ExpiredSignatureError, InvalidTokenError
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
+from app.responses import ErrorHTTPResponse, SuccessHTTPResponse, SystemResponse
 
 import app.models as models
 import app.schemas as schemas
+from app.schemas.schemas import ResponseStatus, InternalResponse
+import inspect
 from app.config import settings
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
@@ -85,39 +88,35 @@ def decode_access_token(token: str):
 
 
 def decode_email_code_token(token: str):
+    origin = inspect.stack()[0].function
+    status = ResponseStatus.ERROR
+    
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload
+        return SystemResponse.internal_response(
+            ResponseStatus.SUCCESS, 
+            origin, 
+            payload)
+        
     except ExpiredSignatureError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=schemas.ErrorDetails(
-                type=TYPE, message="Token has expired", details=None
-            ).model_dump(),
-        )
+        return SystemResponse.internal_response(
+            status, origin, 
+            "Token has expired")
+        
     except InvalidTokenError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=schemas.ErrorDetails(
-                type=TYPE, message="Invalid token", details=None
-            ).model_dump(),
-        )
+        return SystemResponse.internal_response(
+            status, origin, 
+            "Invalid token")
+        
     except DecodeError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=schemas.ErrorDetails(
-                type=TYPE, message="Error decoding token", details=None
-            ).model_dump(),
-        )
+        return SystemResponse.internal_response(
+            status, origin, 
+            "Error decoding token")
+
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=schemas.ErrorDetails(
-                type=TYPE,
-                message=f"An unexpected error occurred: {str(e)}",
-                details=None,
-            ).model_dump(),
-        )
+        return SystemResponse.internal_response(
+            status, origin, 
+            f"An unexpected error occurred: {str(e)}")
 
 
 def get_user_session(token: str = Depends(oauth2_scheme)):

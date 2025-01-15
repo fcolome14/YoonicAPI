@@ -21,9 +21,6 @@ class Users(Base):
     code = Column(Integer, nullable=True)
     code_expiration = Column(TIMESTAMP(timezone=True), nullable=True)
     is_validated = Column(Boolean, nullable=True, default=False)
-    # profile_picture = Column(String, nullable=False)
-    # follower_count = Column(Integer, nullable=False, default=0)
-    # following_count = Column(Integer, nullable=False, default=0)
     created_at = Column(
         TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
     )

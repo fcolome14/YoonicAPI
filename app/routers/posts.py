@@ -2,53 +2,41 @@ import pytz
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import and_, desc, or_
 from sqlalchemy.orm import Session
+from app.schemas.schemas import ResponseStatus
+from app.schemas.schemas import InternalResponse
 
 import app.models as models
 from app.database.connection import get_db
-from app.exception_handlers import ErrorHTTPResponse
 from app.oauth2 import get_user_session
 from app.schemas import schemas
 from app.services.event_service import EventDeleteService
-from app.services.posting_service import EventUpdateService, PostService
 from app.services.retrieve_service import RetrieveService
-from app.success_handlers import success_response
-from app.utils import email_utils
+from app.responses import SuccessHTTPResponse, ErrorHTTPResponse
+from app.templates.template_service import HTMLTemplates
+from app.utils import email_utils, fetch_data_utils
+from app.services.post_service import (
+    HeaderPostsService, 
+    LinesPostService, 
+    PostConfirmation, 
+    UpdatePost)
 
 router = APIRouter(prefix="/posts", tags=["Posts"])
 utc = pytz.UTC
 
 
 @router.get(
-    "/new_post", status_code=status.HTTP_200_OK, response_model=schemas.SuccessResponse
+    "/new-post", status_code=status.HTTP_200_OK, response_model=schemas.SuccessResponse
 )
 def new_post(
     db: Session = Depends(get_db),
     user_id: int = Depends(get_user_session),
     request: Request = None,
 ):
-    fetched_header = (
-        db.query(models.EventsHeaders)
-        .filter(
-            and_(
-                or_(models.EventsHeaders.status == 2, models.EventsHeaders.status == 1),
-                models.EventsHeaders.owner_id == user_id,
-            )
-        )
-        .first()
-    )
-
-    if not fetched_header:
-        message, header = "No pending headers", None
-    else:
-        message, header = (
-            "Found pending headers",
-            RetrieveService.generate_header_structure(fetched_header),
-        )
-    return success_response(message, header, request)
-
+    result: InternalResponse = fetch_data_utils.pending_headers(db, user_id) 
+    return SuccessHTTPResponse.success_response("Fetch any pending header", result.message, request)
 
 @router.post(
-    "/create_header",
+    "/create-header",
     status_code=status.HTTP_200_OK,
     response_model=schemas.SuccessResponse,
 )
@@ -58,16 +46,52 @@ async def create_header(
     user_id: int = Depends(get_user_session),
     request: Request = None,
 ):
-
-    result = await PostService.process_header(
+    result: InternalResponse = await HeaderPostsService.process_header(
         db=db, user_id=user_id, posting_header=posting_data
     )
-    if result.get("status") == "error":
+    if result.status == ResponseStatus.ERROR:
         raise ErrorHTTPResponse.error_response(
-            "CreateHeader", result.get("details"), None
+            "CreateHeader", status.HTTP_500_INTERNAL_SERVER_ERROR, result.message, None
         )
-    return success_response(result.get("message"), result.get("header"), request)
+    return SuccessHTTPResponse.success_response("CreateHeader", result.message, request)
 
+@router.post(
+    "/create-lines",
+    status_code=status.HTTP_200_OK,
+    response_model=schemas.SuccessResponse,
+)
+async def create_lines(
+    posting_data: schemas.NewPostLinesInput,
+    user_id: int = Depends(get_user_session),
+    request: Request = None,
+):
+    lines = LinesPostService(user_id, posting_data)
+    result: InternalResponse = await lines.process_lines()
+    if result.status == ResponseStatus.ERROR:
+        raise ErrorHTTPResponse.error_response(
+            "CreateLines", status.HTTP_500_INTERNAL_SERVER_ERROR, result.message, None
+        )
+    generated_lines: InternalResponse = result.message.message
+    return SuccessHTTPResponse.success_response("CreateLines", generated_lines, request)
+
+@router.post(
+    "/confirm-post",
+    status_code=status.HTTP_200_OK,
+    response_model=schemas.SuccessResponse,
+)
+def confirm_post(
+    posting_data: schemas.NewPostLinesConfirmInput,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_user_session),
+    request: Request = None,
+):
+    post = PostConfirmation(user_id, posting_data)
+    result: InternalResponse = post.add_post(db)
+    if result.status == ResponseStatus.ERROR:
+        raise ErrorHTTPResponse.error_response(
+            "ConfirmPost", status.HTTP_500_INTERNAL_SERVER_ERROR, result.message, None
+        )
+    return SuccessHTTPResponse.success_response("ConfirmPost", "Post created successfully", request)
 
 @router.get(
     "/nearby-events",
@@ -252,32 +276,56 @@ async def update_event(
     user_id: int = Depends(get_user_session),
 ):
 
-    raw_changes = await PostService.update_post_data(
-        user_id=user_id, update_data=updated_data, db=db
-    )
+    tracked_changes = await UpdatePost.update_post_data(
+    db, user_id, updated_data)
 
-    if raw_changes.get("status") == "error":
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=schemas.ErrorDetails(
-                type="UpdatePost", message=raw_changes.get("details"), details=None
-            ).model_dump(),
+    if tracked_changes.status == ResponseStatus.ERROR:
+        raise ErrorHTTPResponse.error_response(
+            "UpdateEvent", 
+            status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            tracked_changes.message, None
         )
+    tracked_changes = tracked_changes.message
+    return SuccessHTTPResponse.success_response("PostUpdate", tracked_changes, request)
 
-    filtered_changes = EventUpdateService.group_changes_by_event(raw_changes)
-    result_email = {}
-    if len(filtered_changes) > 0:
-        message = "Sent event update email"
-        result_email = email_utils.send_updated_events(db, user_id, filtered_changes)
-    else:
-        message = "Event unchanged. Email not sent"
-
-    return schemas.SuccessResponse(
-        status="success",
-        message=message,
-        data=result_email,
-        meta={
-            "request_id": request.headers.get("request-id", "default_request_id"),
-            "client": request.headers.get("client-type", "unknown"),
-        },
-    )
+@router.put(
+    "/confirm-update",
+    status_code=status.HTTP_200_OK,
+    response_model=schemas.SuccessResponse,
+)
+def confirm_update(
+    confirmed_data: schemas.UpdatePostConfirmInput,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_user_session),
+    request: Request = None,
+    ):
+    
+    if not confirmed_data.data:
+        message = "No changes applied"
+        return SuccessHTTPResponse.success_response("ConfirmUpdate", message, request)
+    
+    result: InternalResponse = PostConfirmation.update_db(db, user_id, confirmed_data.data)
+    if result.status == ResponseStatus.ERROR:
+        raise ErrorHTTPResponse.error_response(
+            "ConfirmUpdate", 
+            status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            result.message, None
+        )
+    updated_changes = result.message
+    result = PostConfirmation.build_post_updates_structure(updated_changes)
+    if result.status == ResponseStatus.ERROR:
+        raise ErrorHTTPResponse.error_response(
+            "ConfirmUpdate", 
+            status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            result.message, None
+        )
+    updated_changes = result.message
+    result = email_utils.send_updated_events(db, user_id, updated_changes)
+    if result.status == ResponseStatus.ERROR:
+        raise ErrorHTTPResponse.error_response(
+            "ConfirmUpdate", 
+            status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            result.message, None
+        )
+    
+    return SuccessHTTPResponse.success_response("ConfirmUpdate", result.message, request)

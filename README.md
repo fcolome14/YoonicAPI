@@ -94,7 +94,7 @@ pytest -vv
 ```
 
 ## Instructions:
-### 1. New Post
+### 1. Create a post
 When creating a new post you must consider the following flags setup:
 
 |  	| **Simple** 	| **Simple Rep.(*)** 	| **Custom** 	| **Custom Rep.(*)** 	| **Custom Each Day** 	| **Custom Each Day Rep.(*)** 	|
@@ -120,3 +120,6 @@ Only when using custom mode with "custom_each_day" flag set to False:
 This will follow the defined pattern based on a given date. If the reference date is before a day in the pattern automatically will assign a day for the next week.
 
 Finally, every line can contain single or multiple rates, where a single rate must be indicated by a simple object while multiple must be within a list of objects
+
+### 2. Update a post
+When updating a post it's important to notice that the system will only allow the update of one header at a time. In contrast of lines and rates, the system is capable of modifying multiple records.

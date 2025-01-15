@@ -30,14 +30,3 @@ def custom_http_exception_handler(request: Request, exc: HTTPException):
         status_code=exc.status_code, content=error_response.model_dump()
     )
 
-
-class ErrorHTTPResponse:
-    def error_response(type: str, message: str, details: str):
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=ErrorDetails(
-                type=type,
-                message=message,
-                details=details,
-            ).model_dump(),
-        )

@@ -53,12 +53,12 @@ class HTMLTemplates:
 
             formatted_start_day = line.start.strftime("%B %d")
             formatted_end_day = line.end.strftime("%B %d")
-            formatted_start_time = line.start.strftime("%I:%M %p")
-            formatted_end_time = line.end.strftime("%I:%M %p")
+            formatted_start_time = line.start.strftime("%H:%M")
+            formatted_end_time = line.end.strftime("%H:%M")
             date_line = (
-                f"{formatted_start_day} ({formatted_start_time})"
+                f"{formatted_start_day} at {formatted_start_time}h"
                 if formatted_start_day == formatted_end_day
-                else f"{formatted_start_day} ({formatted_start_time}) to {formatted_end_day} ({formatted_end_time})"
+                else f"{formatted_start_day} ({formatted_start_time}h) to {formatted_end_day} ({formatted_end_time}h)"
             )
 
             html += f"<div class='day-block'><h4 class='highlighted-date'>{date_line}</h4>"
@@ -67,7 +67,7 @@ class HTMLTemplates:
                 html += "<h5 style='color: #e76f51;'>Relevant Updates:</h5><ul>"
                 for field_change in line_data["fields"]:
                     field, old_value, new_value = field_change["field"], field_change["old_value"], field_change["new_value"]
-                    emoji = "📅" if field in ["start", "end"] else "🔄"
+                    emoji = ""
                     
                     if isinstance(new_value, str) and (field == "start" or field == "end"):
                         new_value = datetime.strptime(new_value, "%Y-%m-%d %H:%M:%S.%f")
@@ -80,12 +80,12 @@ class HTMLTemplates:
                         text = "Now is public." if new_value == "True" else "Now is private."
                     elif field == "start":
                         formatted_new_start_day = new_value.strftime("%B %d")
-                        formatted_new_start_time = new_value.strftime("%I:%M %p")
-                        text = f"Now it starts in {formatted_new_start_day} at {formatted_new_start_time}."
+                        formatted_new_start_time = new_value.strftime("%H:%M")
+                        text = f"Now it starts in {formatted_new_start_day} at {formatted_new_start_time}h."
                     elif field == "end":
                         formatted_new_end_day = new_value.strftime("%B %d")
-                        formatted_new_end_time = new_value.strftime("%I:%M %p")
-                        text = f"Now it ends in {formatted_new_end_day} at {formatted_new_end_time}."
+                        formatted_new_end_time = new_value.strftime("%H:%M")
+                        text = f"Now it ends in {formatted_new_end_day} at {formatted_new_end_time}h."
 
                     html += f"<li>{emoji} {text}</li>"
                 html += "</ul>"
